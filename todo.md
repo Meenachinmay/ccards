@@ -1,7 +1,7 @@
-[] initialize project
-[] add folder structure
-[] add basic files
-[] add basic code template (router, config, bootstrap, interfaces)
+[] initialize project - DONE
+[] add folder structure - DONE
+[] add basic files - DONE
+[] add basic code template (router, config, bootstrap, interfaces) - DONE
 [] add github ci-cd pipeline
 [] add database migrations
 [] add database connection
