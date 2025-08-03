@@ -1,0 +1,9 @@
+# Production environment
+app:
+  debug: false
+  log_level: warn
+
+database:
+  ssl_mode: require
+  max_open_conns: 100
+  max_idle_conns: 10

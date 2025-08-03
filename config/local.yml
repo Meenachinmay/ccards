@@ -1,0 +1,17 @@
+# Local environment - values defined here
+app:
+  debug: true
+  log_level: debug
+
+database:
+  host: localhost
+  user: postgres
+  password: postgres
+  db_name: ccards_local
+
+jwt:
+  secret: local-secret-key-for-development
+
+redis:
+  host: localhost
+  password: ""

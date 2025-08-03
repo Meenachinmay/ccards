@@ -1,11 +1,31 @@
 package client
 
-// Repository defines the methods that any company repository must implement
+import (
+	"context"
+
+	"github.com/google/uuid"
+
+	"ccards/internal/api/request"
+	"ccards/internal/api/response"
+	"ccards/pkg/models"
+)
+
 type Repository interface {
-	// Add your repository methods here
+	CreateCompany(ctx context.Context, company *models.Company) error
+	GetCompanyByID(ctx context.Context, id uuid.UUID) (*models.Company, error)
+	GetCompanyByEmail(ctx context.Context, email string) (*models.Company, error)
+
+	CreateCardsToIssue(ctx context.Context, cards []*models.CardToIssue) error
+	GetCardsToIssueByClientID(ctx context.Context, clientID uuid.UUID) ([]*models.CardToIssue, error)
+	UpdateCardToIssueStatus(ctx context.Context, id uuid.UUID, status string) error
 }
 
-// Service defines the methods that the company service must implement
 type Service interface {
-	// Add your service methods here
+	RegisterCompany(ctx context.Context, req *request.RegisterCompany) (*response.RegisterCompanyResponse, error)
+	Login(ctx context.Context, req *request.LoginCompany) (*response.LoginResponse, error)
+	RefreshToken(ctx context.Context, refreshToken string) (*response.RefreshTokenResponse, error)
+	GetCompanyByID(ctx context.Context, id uuid.UUID) (*models.Company, error)
+	GetCompanyByEmail(ctx context.Context, email string) (*models.Company, error)
+	ProcessCardCSVUpload(ctx context.Context, clientID uuid.UUID, csvData []byte) error
+	GetCardsToIssueByClientID(ctx context.Context, clientID uuid.UUID) ([]*models.CardToIssue, error)
 }
