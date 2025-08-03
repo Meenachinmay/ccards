@@ -170,3 +170,33 @@ func (h *Handler) GetCardsToIssue(c *gin.Context) {
 		"count": len(cards),
 	})
 }
+
+func (h *Handler) IssueNewCards(c *gin.Context) {
+	companyID, err := middleware.GetCompanyIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	issuedCount, err := h.service.IssueNewCards(c.Request.Context(), companyID)
+	if err != nil {
+		switch err {
+		case errors.ErrNotFound:
+			c.JSON(http.StatusOK, gin.H{
+				"message":      "No pending cards to issue",
+				"issued_count": 0,
+			})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "Failed to issue cards",
+				"details": err.Error(),
+			})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":      fmt.Sprintf("Successfully issued %d cards", issuedCount),
+		"issued_count": issuedCount,
+	})
+}

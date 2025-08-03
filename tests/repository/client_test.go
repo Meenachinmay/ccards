@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -384,8 +385,8 @@ func TestUpdateCardToIssueStatus(t *testing.T) {
 		assert.Equal(t, models.CardToIssueStatusGenerated, updatedCard.Status)
 
 		// Verify that updated_at was changed
-		assert.True(t, updatedCard.UpdatedAt.After(card.UpdatedAt) || 
-			updatedCard.UpdatedAt.Equal(card.UpdatedAt), 
+		assert.True(t, updatedCard.UpdatedAt.After(card.UpdatedAt) ||
+			updatedCard.UpdatedAt.Equal(card.UpdatedAt),
 			"UpdatedAt should be equal to or after the original timestamp")
 	})
 
@@ -419,6 +420,439 @@ func TestUpdateCardToIssueStatus(t *testing.T) {
 		// Try to update with an invalid status
 		invalidStatus := "invalid_status"
 		err = repo.UpdateCardToIssueStatus(ctx, cardID, invalidStatus)
+
+		// This should fail due to the CHECK constraint in the database
+		require.Error(t, err)
+	})
+}
+
+func TestGetPendingCardsToIssue(t *testing.T) {
+	helper := setup.NewTestHelper(t)
+	repo := client.NewRepository(helper.DB)
+	ctx := context.Background()
+
+	t.Run("company_with_pending_cards", func(t *testing.T) {
+		// Create a company with pending cards
+		companyID := uuid.New()
+
+		pendingCards := []*models.CardToIssue{
+			{
+				ID:            uuid.New(),
+				ClientID:      companyID,
+				CardID:        uuid.New(),
+				EmployeeID:    uuid.New(),
+				EmployeeEmail: "pending1@example.com",
+				Status:        models.CardToIssueStatusPending,
+				CreatedAt:     time.Now().Add(-2 * time.Hour), // Older card
+				UpdatedAt:     time.Now().Add(-2 * time.Hour),
+			},
+			{
+				ID:            uuid.New(),
+				ClientID:      companyID,
+				CardID:        uuid.New(),
+				EmployeeID:    uuid.New(),
+				EmployeeEmail: "pending2@example.com",
+				Status:        models.CardToIssueStatusPending,
+				CreatedAt:     time.Now().Add(-1 * time.Hour), // Newer card
+				UpdatedAt:     time.Now().Add(-1 * time.Hour),
+			},
+		}
+
+		// Also create a generated card for the same company
+		generatedCard := &models.CardToIssue{
+			ID:            uuid.New(),
+			ClientID:      companyID,
+			CardID:        uuid.New(),
+			EmployeeID:    uuid.New(),
+			EmployeeEmail: "generated@example.com",
+			Status:        models.CardToIssueStatusGenerated,
+			CreatedAt:     time.Now(),
+			UpdatedAt:     time.Now(),
+		}
+
+		// Create all cards
+		allCards := append(pendingCards, generatedCard)
+		err := repo.CreateCardsToIssue(ctx, allCards)
+		require.NoError(t, err)
+
+		rows, err := helper.DB.QueryContext(ctx, `
+			SELECT id, client_id, card_id, employee_id, employee_email, status, created_at, updated_at
+			FROM cards_to_issue
+			WHERE client_id = $1 AND status = $2
+			ORDER BY created_at ASC
+		`, companyID, models.CardToIssueStatusPending)
+		require.NoError(t, err)
+		defer rows.Close()
+
+		var retrievedCards []*models.CardToIssue
+		for rows.Next() {
+			card := &models.CardToIssue{}
+			err := rows.Scan(
+				&card.ID,
+				&card.ClientID,
+				&card.CardID,
+				&card.EmployeeID,
+				&card.EmployeeEmail,
+				&card.Status,
+				&card.CreatedAt,
+				&card.UpdatedAt,
+			)
+			require.NoError(t, err)
+			retrievedCards = append(retrievedCards, card)
+		}
+		require.NoError(t, rows.Err())
+
+		require.Len(t, retrievedCards, 2, "Should only return pending cards")
+
+		assert.Equal(t, "pending1@example.com", retrievedCards[0].EmployeeEmail)
+		assert.Equal(t, "pending2@example.com", retrievedCards[1].EmployeeEmail)
+
+		for _, card := range retrievedCards {
+			assert.Equal(t, models.CardToIssueStatusPending, card.Status)
+		}
+	})
+
+	t.Run("company_with_no_pending_cards", func(t *testing.T) {
+		companyID := uuid.New()
+
+		generatedCard := &models.CardToIssue{
+			ID:            uuid.New(),
+			ClientID:      companyID,
+			CardID:        uuid.New(),
+			EmployeeID:    uuid.New(),
+			EmployeeEmail: "only-generated@example.com",
+			Status:        models.CardToIssueStatusGenerated,
+			CreatedAt:     time.Now(),
+			UpdatedAt:     time.Now(),
+		}
+
+		err := repo.CreateCardsToIssue(ctx, []*models.CardToIssue{generatedCard})
+		require.NoError(t, err)
+
+		rows, err := helper.DB.QueryContext(ctx, `
+			SELECT COUNT(*)
+			FROM cards_to_issue
+			WHERE client_id = $1 AND status = $2
+		`, companyID, models.CardToIssueStatusPending)
+		require.NoError(t, err)
+		defer rows.Close()
+
+		var count int
+		require.True(t, rows.Next())
+		err = rows.Scan(&count)
+		require.NoError(t, err)
+		require.NoError(t, rows.Err())
+
+		assert.Equal(t, 0, count, "Should return 0 for company with no pending cards")
+	})
+
+	t.Run("company_with_no_cards", func(t *testing.T) {
+		companyID := uuid.New()
+
+		rows, err := helper.DB.QueryContext(ctx, `
+			SELECT COUNT(*)
+			FROM cards_to_issue
+			WHERE client_id = $1 AND status = $2
+		`, companyID, models.CardToIssueStatusPending)
+		require.NoError(t, err)
+		defer rows.Close()
+
+		var count int
+		require.True(t, rows.Next())
+		err = rows.Scan(&count)
+		require.NoError(t, err)
+		require.NoError(t, rows.Err())
+
+		assert.Equal(t, 0, count, "Should return 0 for company with no cards")
+	})
+}
+
+func TestCreateCardsInBatch(t *testing.T) {
+	helper := setup.NewTestHelper(t)
+	repo := client.NewRepository(helper.DB)
+	ctx := context.Background()
+
+	t.Run("success_single_card", func(t *testing.T) {
+		companyID := uuid.New()
+		cardID := uuid.New()
+
+		company := &models.Company{
+			ID:       companyID,
+			ClientID: uuid.New(),
+			Name:     "Test Company",
+			Email:    "test-card-company@example.com",
+			Password: "hashed_password",
+			Address:  "123 Test St",
+			Phone:    "123-456-7890",
+			Status:   models.CompanyStatusActive,
+		}
+		err := repo.CreateCompany(ctx, company)
+		require.NoError(t, err)
+
+		card := &models.Card{
+			ID:             cardID,
+			CompanyID:      companyID,
+			CardNumber:     "4111111111111111",
+			CardHolderName: "Test Employee",
+			EmployeeID:     uuid.New().String(),
+			EmployeeEmail:  "employee1@example.com",
+			CardType:       models.CardTypeVirtual,
+			Status:         models.CardStatusActive,
+			Balance:        0.00,
+			ExpiryDate:     time.Now().AddDate(3, 0, 0),
+			CVVHash:        "test-cvv-hash",
+			LastFour:       "1111",
+			CreatedAt:      time.Now(),
+			UpdatedAt:      time.Now(),
+		}
+
+		err = repo.CreateCardsInBatch(ctx, []*models.Card{card})
+		require.NoError(t, err)
+
+		var count int
+		err = helper.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM cards WHERE id = $1", cardID).Scan(&count)
+		require.NoError(t, err)
+		assert.Equal(t, 1, count, "Card should be created in the database")
+
+		// Verify card details
+		var retrievedCard models.Card
+		err = helper.DB.QueryRowContext(ctx, `
+			SELECT id, company_id, card_number, card_holder_name, employee_id, employee_email, 
+			       card_type, status, balance, last_four
+			FROM cards WHERE id = $1
+		`, cardID).Scan(
+			&retrievedCard.ID,
+			&retrievedCard.CompanyID,
+			&retrievedCard.CardNumber,
+			&retrievedCard.CardHolderName,
+			&retrievedCard.EmployeeID,
+			&retrievedCard.EmployeeEmail,
+			&retrievedCard.CardType,
+			&retrievedCard.Status,
+			&retrievedCard.Balance,
+			&retrievedCard.LastFour,
+		)
+		require.NoError(t, err)
+
+		assert.Equal(t, card.ID, retrievedCard.ID)
+		assert.Equal(t, card.CompanyID, retrievedCard.CompanyID)
+		assert.Equal(t, card.CardNumber, retrievedCard.CardNumber)
+		assert.Equal(t, card.CardHolderName, retrievedCard.CardHolderName)
+		assert.Equal(t, card.EmployeeID, retrievedCard.EmployeeID)
+		assert.Equal(t, card.EmployeeEmail, retrievedCard.EmployeeEmail)
+		assert.Equal(t, card.CardType, retrievedCard.CardType)
+		assert.Equal(t, card.Status, retrievedCard.Status)
+		assert.Equal(t, card.Balance, retrievedCard.Balance)
+		assert.Equal(t, card.LastFour, retrievedCard.LastFour)
+	})
+
+	t.Run("success_multiple_cards", func(t *testing.T) {
+		companyID := uuid.New()
+
+		company := &models.Company{
+			ID:       companyID,
+			ClientID: uuid.New(),
+			Name:     "Test Company Multiple Cards",
+			Email:    "test-multiple-cards@example.com",
+			Password: "hashed_password",
+			Address:  "456 Test St",
+			Phone:    "123-456-7890",
+			Status:   models.CompanyStatusActive,
+		}
+		err := repo.CreateCompany(ctx, company)
+		require.NoError(t, err)
+
+		cards := []*models.Card{
+			{
+				ID:             uuid.New(),
+				CompanyID:      companyID,
+				CardNumber:     "4222222222222222",
+				CardHolderName: "Employee 2",
+				EmployeeID:     uuid.New().String(),
+				EmployeeEmail:  "employee2@example.com",
+				CardType:       models.CardTypeVirtual,
+				Status:         models.CardStatusActive,
+				Balance:        0.00,
+				ExpiryDate:     time.Now().AddDate(3, 0, 0),
+				CVVHash:        "test-cvv-hash-2",
+				LastFour:       "2222",
+				CreatedAt:      time.Now(),
+				UpdatedAt:      time.Now(),
+			},
+			{
+				ID:             uuid.New(),
+				CompanyID:      companyID,
+				CardNumber:     "4333333333333333",
+				CardHolderName: "Employee 3",
+				EmployeeID:     uuid.New().String(),
+				EmployeeEmail:  "employee3@example.com",
+				CardType:       models.CardTypeVirtual,
+				Status:         models.CardStatusActive,
+				Balance:        0.00,
+				ExpiryDate:     time.Now().AddDate(3, 0, 0),
+				CVVHash:        "test-cvv-hash-3",
+				LastFour:       "3333",
+				CreatedAt:      time.Now(),
+				UpdatedAt:      time.Now(),
+			},
+		}
+
+		err = repo.CreateCardsInBatch(ctx, cards)
+		require.NoError(t, err)
+
+		// Verify cards were created by querying the database directly
+		var count int
+		err = helper.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM cards WHERE company_id = $1", companyID).Scan(&count)
+		require.NoError(t, err)
+		assert.Equal(t, 2, count, "Both cards should be created in the database")
+
+		// Verify each card's details
+		for _, card := range cards {
+			var retrievedCard models.Card
+			err = helper.DB.QueryRowContext(ctx, `
+				SELECT id, company_id, card_number, card_holder_name, employee_id, employee_email, 
+					   card_type, status, balance, last_four
+				FROM cards WHERE id = $1
+			`, card.ID).Scan(
+				&retrievedCard.ID,
+				&retrievedCard.CompanyID,
+				&retrievedCard.CardNumber,
+				&retrievedCard.CardHolderName,
+				&retrievedCard.EmployeeID,
+				&retrievedCard.EmployeeEmail,
+				&retrievedCard.CardType,
+				&retrievedCard.Status,
+				&retrievedCard.Balance,
+				&retrievedCard.LastFour,
+			)
+			require.NoError(t, err)
+
+			assert.Equal(t, card.ID, retrievedCard.ID)
+			assert.Equal(t, card.CompanyID, retrievedCard.CompanyID)
+			assert.Equal(t, card.CardNumber, retrievedCard.CardNumber)
+			assert.Equal(t, card.CardHolderName, retrievedCard.CardHolderName)
+			assert.Equal(t, card.EmployeeID, retrievedCard.EmployeeID)
+			assert.Equal(t, card.EmployeeEmail, retrievedCard.EmployeeEmail)
+			assert.Equal(t, card.CardType, retrievedCard.CardType)
+			assert.Equal(t, card.Status, retrievedCard.Status)
+			assert.Equal(t, card.Balance, retrievedCard.Balance)
+			assert.Equal(t, card.LastFour, retrievedCard.LastFour)
+		}
+	})
+
+	t.Run("empty_cards_slice", func(t *testing.T) {
+		err := repo.CreateCardsInBatch(ctx, []*models.Card{})
+		require.NoError(t, err, "Creating empty cards slice should not return an error")
+	})
+}
+
+func TestUpdateCardsToIssueStatusBatch(t *testing.T) {
+	helper := setup.NewTestHelper(t)
+	repo := client.NewRepository(helper.DB)
+	ctx := context.Background()
+
+	t.Run("update_multiple_cards", func(t *testing.T) {
+		companyID := uuid.New()
+		cardIDs := []uuid.UUID{uuid.New(), uuid.New(), uuid.New()}
+
+		var cards []*models.CardToIssue
+		for i, id := range cardIDs {
+			card := &models.CardToIssue{
+				ID:            id,
+				ClientID:      companyID,
+				CardID:        uuid.New(),
+				EmployeeID:    uuid.New(),
+				EmployeeEmail: fmt.Sprintf("batch-update-%d@example.com", i),
+				Status:        models.CardToIssueStatusPending,
+				CreatedAt:     time.Now(),
+				UpdatedAt:     time.Now(),
+			}
+			cards = append(cards, card)
+		}
+
+		err := repo.CreateCardsToIssue(ctx, cards)
+		require.NoError(t, err)
+
+		// Update all cards to generated status
+		err = repo.UpdateCardsToIssueStatusBatch(ctx, cardIDs, models.CardToIssueStatusGenerated)
+		require.NoError(t, err)
+
+		// Verify all cards were updated
+		for _, id := range cardIDs {
+			var status string
+			err = helper.DB.QueryRowContext(ctx, "SELECT status FROM cards_to_issue WHERE id = $1", id).Scan(&status)
+			require.NoError(t, err)
+			assert.Equal(t, models.CardToIssueStatusGenerated, status)
+		}
+	})
+
+	t.Run("update_subset_of_cards", func(t *testing.T) {
+		// Create multiple cards with pending status
+		companyID := uuid.New()
+		allCardIDs := []uuid.UUID{uuid.New(), uuid.New(), uuid.New()}
+
+		var cards []*models.CardToIssue
+		for i, id := range allCardIDs {
+			card := &models.CardToIssue{
+				ID:            id,
+				ClientID:      companyID,
+				CardID:        uuid.New(),
+				EmployeeID:    uuid.New(),
+				EmployeeEmail: fmt.Sprintf("batch-subset-%d@example.com", i),
+				Status:        models.CardToIssueStatusPending,
+				CreatedAt:     time.Now(),
+				UpdatedAt:     time.Now(),
+			}
+			cards = append(cards, card)
+		}
+
+		err := repo.CreateCardsToIssue(ctx, cards)
+		require.NoError(t, err)
+
+		// Update only the first two cards
+		updateIDs := allCardIDs[:2]
+		err = repo.UpdateCardsToIssueStatusBatch(ctx, updateIDs, models.CardToIssueStatusGenerated)
+		require.NoError(t, err)
+
+		// Verify updated cards
+		for i, id := range allCardIDs {
+			var status string
+			err = helper.DB.QueryRowContext(ctx, "SELECT status FROM cards_to_issue WHERE id = $1", id).Scan(&status)
+			require.NoError(t, err)
+
+			if i < 2 {
+				assert.Equal(t, models.CardToIssueStatusGenerated, status)
+			} else {
+				assert.Equal(t, models.CardToIssueStatusPending, status)
+			}
+		}
+	})
+
+	t.Run("empty_ids_slice", func(t *testing.T) {
+		err := repo.UpdateCardsToIssueStatusBatch(ctx, []uuid.UUID{}, models.CardToIssueStatusGenerated)
+		require.NoError(t, err, "Updating empty IDs slice should not return an error")
+	})
+
+	t.Run("update_with_invalid_status", func(t *testing.T) {
+		// Create a card with pending status
+		cardID := uuid.New()
+		card := &models.CardToIssue{
+			ID:            cardID,
+			ClientID:      uuid.New(),
+			CardID:        uuid.New(),
+			EmployeeID:    uuid.New(),
+			EmployeeEmail: "batch-invalid@example.com",
+			Status:        models.CardToIssueStatusPending,
+			CreatedAt:     time.Now(),
+			UpdatedAt:     time.Now(),
+		}
+
+		err := repo.CreateCardsToIssue(ctx, []*models.CardToIssue{card})
+		require.NoError(t, err)
+
+		// Try to update with an invalid status
+		invalidStatus := "invalid_status"
+		err = repo.UpdateCardsToIssueStatusBatch(ctx, []uuid.UUID{cardID}, invalidStatus)
 
 		// This should fail due to the CHECK constraint in the database
 		require.Error(t, err)

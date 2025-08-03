@@ -68,3 +68,39 @@ Accept: application/json
 Authorization: Bearer {{accessToken}}
 
 {}
+
+### Issue New Cards
+# This endpoint issues new cards for employees that were uploaded via CSV
+POST http://localhost:8080/api/company/issue-cards
+Content-Type: application/json
+Accept: application/json
+Authorization: Bearer {{accessToken}}
+
+> {%
+    console.log("Issue Cards response body:", response.body);
+
+    if (response.body.issued_count !== undefined) {
+        console.log(`Successfully issued ${response.body.issued_count} cards`);
+    } else if (response.body.error) {
+        console.error(`Error: ${response.body.error}`);
+        if (response.body.details) {
+            console.error(`Details: ${response.body.details}`);
+        }
+    }
+%}
+
+### Verify Cards Status After Issuing
+# This endpoint gets the cards to issue again to verify they've been processed
+GET http://localhost:8080/api/company/to-issue
+Content-Type: application/json
+Accept: application/json
+Authorization: Bearer {{accessToken}}
+
+> {%
+    console.log("Cards status after issuing:", response.body);
+
+    if (response.body.cards) {
+        const generatedCards = response.body.cards.filter(card => card.status === "generated");
+        console.log(`Generated cards: ${generatedCards.length} out of ${response.body.count}`);
+    }
+%}
