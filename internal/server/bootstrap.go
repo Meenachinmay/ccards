@@ -1,6 +1,7 @@
 package server
 
 import (
+	"ccards/internal/card"
 	"ccards/internal/client"
 	"ccards/internal/router"
 	"ccards/pkg/config"
@@ -63,12 +64,19 @@ func (b *Bootstrap) Run() error {
 	}
 	b.redis = redisClient
 
+	// client
 	clientRepo := client.NewRepository(db)
 	clientService := client.NewService(clientRepo, cfg.JWT, b.redis)
 	clientHandler := client.NewHandler(clientService)
 
+	// cards
+	cardRepo := card.NewRepository(db)
+	cardService := card.NewService(cardRepo)
+	cardHandler := card.NewHandler(cardService)
+
 	r := router.NewRouter(router.RouterConfig{
 		ClientHandler: clientHandler,
+		CardHandler:   cardHandler,
 		Config:        b.config,
 		RedisClient:   b.redis,
 	})

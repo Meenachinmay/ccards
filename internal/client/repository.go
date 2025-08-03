@@ -32,7 +32,7 @@ func (r *repository) CreateCompany(ctx context.Context, company *models.Company)
 	).Scan(&company.CreatedAt, &company.UpdatedAt)
 
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create company: %w", err)
 	}
 
 	return nil
@@ -228,6 +228,19 @@ func (r *repository) GetPendingCardsToIssue(ctx context.Context, companyID uuid.
 func (r *repository) CreateCardsInBatch(ctx context.Context, cards []*models.Card) error {
 	if len(cards) == 0 {
 		return nil
+	}
+
+	// Check if all companies exist before attempting to create cards
+	for _, card := range cards {
+		// Check if company exists
+		var exists bool
+		err := r.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM companies WHERE id = $1)", card.CompanyID).Scan(&exists)
+		if err != nil {
+			return fmt.Errorf("failed to check if company exists: %w", err)
+		}
+		if !exists {
+			return fmt.Errorf("company with ID %s does not exist", card.CompanyID)
+		}
 	}
 
 	// Start transaction

@@ -1,6 +1,7 @@
 package router
 
 import (
+	"ccards/internal/card"
 	"ccards/internal/client"
 	"ccards/pkg/config"
 	"ccards/pkg/middleware"
@@ -11,12 +12,14 @@ import (
 type Router struct {
 	engine        *gin.Engine
 	clientHandler *client.Handler
+	cardHandler   *card.Handler
 	config        *config.Config
 	redisClient   *redis.Client
 }
 
 type RouterConfig struct {
 	ClientHandler *client.Handler
+	CardHandler   *card.Handler
 	Config        *config.Config
 	RedisClient   *redis.Client
 }
@@ -25,6 +28,7 @@ func NewRouter(cfg RouterConfig) *Router {
 	return &Router{
 		engine:        gin.New(),
 		clientHandler: cfg.ClientHandler,
+		cardHandler:   cfg.CardHandler,
 		config:        cfg.Config,
 		redisClient:   cfg.RedisClient,
 	}
@@ -56,6 +60,7 @@ func (r *Router) Setup() *gin.Engine {
 		companyGroup := apiGroup.Group("/company")
 		{
 			companyGroup.GET("", r.clientHandler.GetCompany)
+			companyGroup.GET("/cards", r.cardHandler.GetCards)
 			companyGroup.POST("/upload-csv", r.clientHandler.UploadCardCSV)
 			companyGroup.GET("/to-issue", r.clientHandler.GetCardsToIssue)
 			companyGroup.POST("/issue-cards", r.clientHandler.IssueNewCards)

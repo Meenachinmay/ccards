@@ -1,11 +1,17 @@
 package card
 
-// Repository defines the methods that any card repository must implement
+import (
+	"context"
+
+	"github.com/google/uuid"
+
+	"ccards/pkg/models"
+)
+
 type Repository interface {
-	// Add your repository methods here
+	GetCardsByCompanyID(ctx context.Context, companyID uuid.UUID) ([]*models.Card, error)
 }
 
-// Service defines the methods that the card service must implement
 type Service interface {
-	// Add your service methods here
+	GetCardsByCompanyID(ctx context.Context, companyID uuid.UUID) ([]*models.Card, error)
 }

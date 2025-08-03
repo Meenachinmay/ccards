@@ -104,3 +104,10 @@ Authorization: Bearer {{accessToken}}
         console.log(`Generated cards: ${generatedCards.length} out of ${response.body.count}`);
     }
 %}
+
+
+### Get all cards for a company
+GET http://localhost:8080/api/company/cards
+Content-Type: application/json
+Accept: application/json
+Authorization: Bearer {{accessToken}}
