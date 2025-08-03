@@ -8,6 +8,7 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
+-- Create triggers for existing tables
 CREATE TRIGGER update_companies_updated_at BEFORE UPDATE ON companies
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 

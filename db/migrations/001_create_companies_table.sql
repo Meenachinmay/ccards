@@ -1,5 +1,7 @@
 -- +goose Up
 -- +goose StatementBegin
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
 CREATE TABLE companies (
                            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                            client_id UUID NOT NULL,
@@ -8,10 +10,12 @@ CREATE TABLE companies (
                            password VARCHAR(255) NOT NULL,
                            address TEXT,
                            phone VARCHAR(50),
-                           status VARCHAR(50) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'inactive')),
+                           status VARCHAR(50) NOT NULL DEFAULT 'active',
                            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                            updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE companies ADD CONSTRAINT chk_company_status CHECK (status IN ('active', 'suspended', 'inactive'));
 
 CREATE INDEX idx_companies_email ON companies(email);
 CREATE INDEX idx_companies_client_id ON companies(client_id);

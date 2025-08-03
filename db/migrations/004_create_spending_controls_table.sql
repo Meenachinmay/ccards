@@ -3,12 +3,14 @@
 CREATE TABLE spending_controls (
                                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                                    card_id UUID NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
-                                   control_type VARCHAR(50) NOT NULL CHECK (control_type IN ('merchant_category', 'merchant_name', 'time_based', 'location')),
+                                   control_type VARCHAR(50) NOT NULL,
                                    control_value JSONB NOT NULL,
                                    is_active BOOLEAN DEFAULT true,
                                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE spending_controls ADD CONSTRAINT chk_control_type CHECK (control_type IN ('merchant_category', 'merchant_name', 'time_based', 'location'));
 
 CREATE INDEX idx_spending_controls_card_id ON spending_controls(card_id);
 CREATE INDEX idx_spending_controls_type ON spending_controls(control_type);
