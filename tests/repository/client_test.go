@@ -195,7 +195,6 @@ func TestCreateCardsToIssue(t *testing.T) {
 		err := repo.CreateCardsToIssue(ctx, []*models.CardToIssue{card})
 		require.NoError(t, err)
 
-		// Verify card was created by retrieving it
 		cards, err := repo.GetCardsToIssueByClientID(ctx, clientID)
 		require.NoError(t, err)
 		require.Len(t, cards, 1)
@@ -240,18 +239,15 @@ func TestCreateCardsToIssue(t *testing.T) {
 		err := repo.CreateCardsToIssue(ctx, cards)
 		require.NoError(t, err)
 
-		// Verify cards were created by retrieving them
 		savedCards, err := repo.GetCardsToIssueByClientID(ctx, clientID)
 		require.NoError(t, err)
 		require.Len(t, savedCards, 2)
 
-		// Create a map of expected cards by ID for easier comparison
 		expectedCards := make(map[string]*models.CardToIssue)
 		for _, card := range cards {
 			expectedCards[card.ID.String()] = card
 		}
 
-		// Verify each saved card matches an expected card
 		for _, savedCard := range savedCards {
 			expectedCard, exists := expectedCards[savedCard.ID.String()]
 			require.True(t, exists, "Saved card ID not found in expected cards")
@@ -278,7 +274,6 @@ func TestGetCardsToIssueByClientID(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("client_with_cards", func(t *testing.T) {
-		// Create a client with multiple cards
 		clientID := uuid.New()
 
 		cards := []*models.CardToIssue{
@@ -307,22 +302,18 @@ func TestGetCardsToIssueByClientID(t *testing.T) {
 		err := repo.CreateCardsToIssue(ctx, cards)
 		require.NoError(t, err)
 
-		// Retrieve cards for the client
 		retrievedCards, err := repo.GetCardsToIssueByClientID(ctx, clientID)
 		require.NoError(t, err)
 		require.Len(t, retrievedCards, 2)
 
-		// Verify cards are returned in descending order by created_at (newest first)
 		assert.Equal(t, models.CardToIssueStatusGenerated, retrievedCards[0].Status)
 		assert.Equal(t, models.CardToIssueStatusPending, retrievedCards[1].Status)
 
-		// Create a map of expected cards by ID for easier comparison
 		expectedCards := make(map[string]*models.CardToIssue)
 		for _, card := range cards {
 			expectedCards[card.ID.String()] = card
 		}
 
-		// Verify each retrieved card matches an expected card
 		for _, retrievedCard := range retrievedCards {
 			expectedCard, exists := expectedCards[retrievedCard.ID.String()]
 			require.True(t, exists, "Retrieved card ID not found in expected cards")
@@ -338,7 +329,6 @@ func TestGetCardsToIssueByClientID(t *testing.T) {
 	})
 
 	t.Run("client_with_no_cards", func(t *testing.T) {
-		// Use a random client ID that shouldn't have any cards
 		clientID := uuid.New()
 
 		retrievedCards, err := repo.GetCardsToIssueByClientID(ctx, clientID)
@@ -353,7 +343,6 @@ func TestUpdateCardToIssueStatus(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("update_existing_card", func(t *testing.T) {
-		// Create a card with pending status
 		cardID := uuid.New()
 		clientID := uuid.New()
 
@@ -371,11 +360,9 @@ func TestUpdateCardToIssueStatus(t *testing.T) {
 		err := repo.CreateCardsToIssue(ctx, []*models.CardToIssue{card})
 		require.NoError(t, err)
 
-		// Update the card status to generated
 		err = repo.UpdateCardToIssueStatus(ctx, cardID, models.CardToIssueStatusGenerated)
 		require.NoError(t, err)
 
-		// Retrieve the card to verify the status was updated
 		cards, err := repo.GetCardsToIssueByClientID(ctx, clientID)
 		require.NoError(t, err)
 		require.Len(t, cards, 1)
@@ -384,14 +371,12 @@ func TestUpdateCardToIssueStatus(t *testing.T) {
 		assert.Equal(t, cardID, updatedCard.ID)
 		assert.Equal(t, models.CardToIssueStatusGenerated, updatedCard.Status)
 
-		// Verify that updated_at was changed
 		assert.True(t, updatedCard.UpdatedAt.After(card.UpdatedAt) ||
 			updatedCard.UpdatedAt.Equal(card.UpdatedAt),
 			"UpdatedAt should be equal to or after the original timestamp")
 	})
 
 	t.Run("update_non_existing_card", func(t *testing.T) {
-		// Try to update a card that doesn't exist
 		nonExistingID := uuid.New()
 
 		err := repo.UpdateCardToIssueStatus(ctx, nonExistingID, models.CardToIssueStatusGenerated)
@@ -400,7 +385,6 @@ func TestUpdateCardToIssueStatus(t *testing.T) {
 	})
 
 	t.Run("update_with_invalid_status", func(t *testing.T) {
-		// Create a card with pending status
 		cardID := uuid.New()
 
 		card := &models.CardToIssue{
@@ -417,11 +401,9 @@ func TestUpdateCardToIssueStatus(t *testing.T) {
 		err := repo.CreateCardsToIssue(ctx, []*models.CardToIssue{card})
 		require.NoError(t, err)
 
-		// Try to update with an invalid status
 		invalidStatus := "invalid_status"
 		err = repo.UpdateCardToIssueStatus(ctx, cardID, invalidStatus)
 
-		// This should fail due to the CHECK constraint in the database
 		require.Error(t, err)
 	})
 }
@@ -432,7 +414,6 @@ func TestGetPendingCardsToIssue(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("company_with_pending_cards", func(t *testing.T) {
-		// Create a company with pending cards
 		companyID := uuid.New()
 
 		pendingCards := []*models.CardToIssue{
@@ -458,7 +439,6 @@ func TestGetPendingCardsToIssue(t *testing.T) {
 			},
 		}
 
-		// Also create a generated card for the same company
 		generatedCard := &models.CardToIssue{
 			ID:            uuid.New(),
 			ClientID:      companyID,
@@ -470,7 +450,6 @@ func TestGetPendingCardsToIssue(t *testing.T) {
 			UpdatedAt:     time.Now(),
 		}
 
-		// Create all cards
 		allCards := append(pendingCards, generatedCard)
 		err := repo.CreateCardsToIssue(ctx, allCards)
 		require.NoError(t, err)
@@ -589,6 +568,12 @@ func TestCreateCardsInBatch(t *testing.T) {
 		err := repo.CreateCompany(ctx, company)
 		require.NoError(t, err)
 
+		// Verify company was created
+		var companyExists bool
+		err = helper.DB.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM companies WHERE id = $1)", companyID).Scan(&companyExists)
+		require.NoError(t, err)
+		require.True(t, companyExists, "Company should exist in the database")
+
 		card := &models.Card{
 			ID:             cardID,
 			CompanyID:      companyID,
@@ -614,7 +599,6 @@ func TestCreateCardsInBatch(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, 1, count, "Card should be created in the database")
 
-		// Verify card details
 		var retrievedCard models.Card
 		err = helper.DB.QueryRowContext(ctx, `
 			SELECT id, company_id, card_number, card_holder_name, employee_id, employee_email, 
@@ -662,6 +646,11 @@ func TestCreateCardsInBatch(t *testing.T) {
 		err := repo.CreateCompany(ctx, company)
 		require.NoError(t, err)
 
+		var companyExists bool
+		err = helper.DB.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM companies WHERE id = $1)", companyID).Scan(&companyExists)
+		require.NoError(t, err)
+		require.True(t, companyExists, "Company should exist in the database")
+
 		cards := []*models.Card{
 			{
 				ID:             uuid.New(),
@@ -700,13 +689,11 @@ func TestCreateCardsInBatch(t *testing.T) {
 		err = repo.CreateCardsInBatch(ctx, cards)
 		require.NoError(t, err)
 
-		// Verify cards were created by querying the database directly
 		var count int
 		err = helper.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM cards WHERE company_id = $1", companyID).Scan(&count)
 		require.NoError(t, err)
 		assert.Equal(t, 2, count, "Both cards should be created in the database")
 
-		// Verify each card's details
 		for _, card := range cards {
 			var retrievedCard models.Card
 			err = helper.DB.QueryRowContext(ctx, `
@@ -773,11 +760,9 @@ func TestUpdateCardsToIssueStatusBatch(t *testing.T) {
 		err := repo.CreateCardsToIssue(ctx, cards)
 		require.NoError(t, err)
 
-		// Update all cards to generated status
 		err = repo.UpdateCardsToIssueStatusBatch(ctx, cardIDs, models.CardToIssueStatusGenerated)
 		require.NoError(t, err)
 
-		// Verify all cards were updated
 		for _, id := range cardIDs {
 			var status string
 			err = helper.DB.QueryRowContext(ctx, "SELECT status FROM cards_to_issue WHERE id = $1", id).Scan(&status)
@@ -787,7 +772,6 @@ func TestUpdateCardsToIssueStatusBatch(t *testing.T) {
 	})
 
 	t.Run("update_subset_of_cards", func(t *testing.T) {
-		// Create multiple cards with pending status
 		companyID := uuid.New()
 		allCardIDs := []uuid.UUID{uuid.New(), uuid.New(), uuid.New()}
 
@@ -809,12 +793,10 @@ func TestUpdateCardsToIssueStatusBatch(t *testing.T) {
 		err := repo.CreateCardsToIssue(ctx, cards)
 		require.NoError(t, err)
 
-		// Update only the first two cards
 		updateIDs := allCardIDs[:2]
 		err = repo.UpdateCardsToIssueStatusBatch(ctx, updateIDs, models.CardToIssueStatusGenerated)
 		require.NoError(t, err)
 
-		// Verify updated cards
 		for i, id := range allCardIDs {
 			var status string
 			err = helper.DB.QueryRowContext(ctx, "SELECT status FROM cards_to_issue WHERE id = $1", id).Scan(&status)
@@ -834,7 +816,6 @@ func TestUpdateCardsToIssueStatusBatch(t *testing.T) {
 	})
 
 	t.Run("update_with_invalid_status", func(t *testing.T) {
-		// Create a card with pending status
 		cardID := uuid.New()
 		card := &models.CardToIssue{
 			ID:            cardID,
@@ -850,11 +831,9 @@ func TestUpdateCardsToIssueStatusBatch(t *testing.T) {
 		err := repo.CreateCardsToIssue(ctx, []*models.CardToIssue{card})
 		require.NoError(t, err)
 
-		// Try to update with an invalid status
 		invalidStatus := "invalid_status"
 		err = repo.UpdateCardsToIssueStatusBatch(ctx, []uuid.UUID{cardID}, invalidStatus)
 
-		// This should fail due to the CHECK constraint in the database
 		require.Error(t, err)
 	})
 }
