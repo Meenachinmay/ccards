@@ -7,9 +7,9 @@ CREATE TABLE cards (
                        card_holder_name VARCHAR(255) NOT NULL,
                        employee_id VARCHAR(100),
                        employee_email VARCHAR(255),
-                       card_type VARCHAR(50) NOT NULL DEFAULT 'virtual' CHECK (card_type IN ('virtual', 'physical')),
-                       status VARCHAR(50) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'blocked', 'expired', 'cancelled')),
-                       balance DECIMAL(15, 2) NOT NULL DEFAULT 0.00 CHECK (balance >= 0),
+                       card_type VARCHAR(50) NOT NULL DEFAULT 'virtual',
+                       status VARCHAR(50) NOT NULL DEFAULT 'active',
+                       balance DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
                        spending_limit DECIMAL(15, 2),
                        daily_limit DECIMAL(15, 2),
                        monthly_limit DECIMAL(15, 2),
@@ -21,6 +21,10 @@ CREATE TABLE cards (
                        blocked_at TIMESTAMP WITH TIME ZONE,
                        blocked_reason TEXT
 );
+
+ALTER TABLE cards ADD CONSTRAINT chk_card_type CHECK (card_type IN ('virtual', 'physical'));
+ALTER TABLE cards ADD CONSTRAINT chk_card_status CHECK (status IN ('active', 'blocked', 'expired', 'cancelled'));
+ALTER TABLE cards ADD CONSTRAINT chk_balance CHECK (balance >= 0);
 
 CREATE INDEX idx_cards_company_id ON cards(company_id);
 CREATE INDEX idx_cards_card_number ON cards(card_number);

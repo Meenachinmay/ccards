@@ -237,16 +237,39 @@ func (r *repository) CreateCardsInBatch(ctx context.Context, cards []*models.Car
 	}
 	defer tx.Rollback()
 
-	// Check if all companies exist within the transaction
+	// Collect unique company IDs to check for existence
+	companyIDs := make(map[uuid.UUID]bool)
 	for _, card := range cards {
-		// Check if company exists
-		var exists bool
-		err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM companies WHERE id = $1)", card.CompanyID).Scan(&exists)
-		if err != nil {
-			return fmt.Errorf("failed to check if company exists: %w", err)
+		companyIDs[card.CompanyID] = true
+	}
+	uniqueCompanyIDs := make([]uuid.UUID, 0, len(companyIDs))
+	for id := range companyIDs {
+		uniqueCompanyIDs = append(uniqueCompanyIDs, id)
+	}
+
+	// Check if all companies exist in a single query to prevent deadlocks
+	rows, err := tx.QueryContext(ctx, "SELECT id FROM companies WHERE id = ANY($1)", pq.Array(uniqueCompanyIDs))
+	if err != nil {
+		return fmt.Errorf("failed to query for companies: %w", err)
+	}
+	defer rows.Close()
+
+	foundCompanies := make(map[uuid.UUID]bool)
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return fmt.Errorf("failed to scan company ID: %w", err)
 		}
-		if !exists {
-			return fmt.Errorf("company with ID %s does not exist", card.CompanyID)
+		foundCompanies[id] = true
+	}
+
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("failed to process company query results: %w", err)
+	}
+
+	for _, id := range uniqueCompanyIDs {
+		if !foundCompanies[id] {
+			return fmt.Errorf("company with ID %s does not exist", id)
 		}
 	}
 
