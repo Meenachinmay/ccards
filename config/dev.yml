@@ -1,0 +1,7 @@
+# Dev environment - minimal config, most values come from env vars
+app:
+  debug: true
+  log_level: debug
+
+# Database config will come from environment variables:
+# DATABASE_HOST, DATABASE_USER, DATABASE_PASSWORD, etc.

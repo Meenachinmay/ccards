@@ -1,0 +1,32 @@
+# Base configuration - common for all environments
+app:
+  name: ccards
+  debug: false
+  log_level: info
+
+server:
+  host: 0.0.0.0
+  port: 8080
+  read_timeout: 15s
+  write_timeout: 15s
+  idle_timeout: 60s
+
+database:
+  port: 5432
+  ssl_mode: disable
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 5m
+  conn_max_idle_time: 1m
+
+jwt:
+  access_token_duration: 15m
+  refresh_token_duration: 168h # 7 days
+
+redis:
+  port: 6379
+  db: 0
+  dial_timeout: 5s
+  read_timeout: 3s
+  write_timeout: 3s
+  pool_size: 10

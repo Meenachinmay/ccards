@@ -1,0 +1,70 @@
+### Health Check
+GET http://localhost:8080/health
+Accept: application/json
+
+### Register Company
+POST http://localhost:8080/admin/company/register
+Content-Type: application/json
+Accept: application/json
+
+{
+  "name": "Test Company",
+  "email": "test@example.com",
+  "address": "123 Test Street, Test City",
+  "phone": "+1234567890"
+}
+
+### Company Login
+POST http://localhost:8080/auth/company/login
+Content-Type: application/json
+Accept: application/json
+
+{
+  "email": "test@example.com",
+  "password": "twBL1Oa2MTD6"
+}
+
+> {%
+    console.log("Login response body:", response.body);
+
+    // Attempt to get the token
+    let token = response.body.access_token;
+
+    if (token) {
+        console.log("Captured token:", token);
+        client.global.set("accessToken", token);
+        console.log("'accessToken' has been set globally for the session.");
+    } else {
+        console.error("ERROR: 'access_token' not found in the response body!");
+    }
+%}
+
+
+### Get Company Details
+GET http://localhost:8080/api/company
+Content-Type: application/json
+Accept: application/json
+Authorization: Bearer {{accessToken}}
+
+### Upload Card CSV
+# Use a multipart form request to upload a CSV file
+# Note: The handler implementation expects authentication, but the router doesn't apply auth middleware
+POST http://localhost:8080/api/company/upload-csv
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+Authorization: Bearer {{accessToken}}
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="file"; filename="employees.csv"
+Content-Type: text/csv
+
+< ./employee.csv
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+### Get Cards To Issue
+# Note: The handler implementation expects authentication, but the router doesn't apply auth middleware
+GET http://localhost:8080/api/company/to-issue
+Content-Type: application/json
+Accept: application/json
+Authorization: Bearer {{accessToken}}
+
+{}
