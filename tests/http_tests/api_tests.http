@@ -29,6 +29,7 @@ Accept: application/json
 
     // Attempt to get the token
     let token = response.body.access_token;
+    let companyId = response.body.company?.id;
 
     if (token) {
         console.log("Captured token:", token);
@@ -36,6 +37,14 @@ Accept: application/json
         console.log("'accessToken' has been set globally for the session.");
     } else {
         console.error("ERROR: 'access_token' not found in the response body!");
+    }
+
+    if (companyId) {
+        console.log("Captured company ID:", companyId);
+        client.global.set("companyId", companyId);
+        console.log("'companyId' has been set globally for the session.");
+    } else {
+        console.error("ERROR: 'company.id' not found in the response body!");
     }
 %}
 
@@ -62,7 +71,7 @@ Content-Type: text/csv
 
 ### Get Cards To Issue
 # Note: The handler implementation expects authentication, but the router doesn't apply auth middleware
-GET http://localhost:8080/api/company/to-issue
+GET http://localhost:8080/api/company/card-to-issue
 Content-Type: application/json
 Accept: application/json
 Authorization: Bearer {{accessToken}}
@@ -107,7 +116,40 @@ Authorization: Bearer {{accessToken}}
 
 
 ### Get all cards for a company
-GET http://localhost:8080/api/company/cards
+GET http://localhost:8080/api/cards
 Content-Type: application/json
 Accept: application/json
 Authorization: Bearer {{accessToken}}
+
+> {%
+    console.log("Get cards response body:", response.body);
+
+    if (response.body.cards && response.body.cards.length > 0) {
+        const firstCard = response.body.cards[0];
+        console.log("First card:", firstCard);
+        client.global.set("cardId", firstCard.id);
+        console.log("'cardId' has been set globally for the session:", firstCard.id);
+    } else {
+        console.error("ERROR: No cards found in the response!");
+    }
+%}
+
+### Update Card Spending Limit
+POST http://localhost:8080/api/cards/update/spending-limit?cardId={{cardId}}
+Content-Type: application/json
+Accept: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "spending_limit": 5000
+}
+
+> {%
+    console.log("Update Spending Limit response body:", response.body);
+
+    if (response.body.card) {
+        console.log("Card updated successfully with spending limit:", response.body.card.spending_limit);
+    } else if (response.body.error) {
+        console.error(`Error: ${response.body.error}`);
+    }
+%}

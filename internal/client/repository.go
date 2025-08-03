@@ -230,11 +230,18 @@ func (r *repository) CreateCardsInBatch(ctx context.Context, cards []*models.Car
 		return nil
 	}
 
-	// Check if all companies exist before attempting to create cards
+	// Start transaction
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Check if all companies exist within the transaction
 	for _, card := range cards {
 		// Check if company exists
 		var exists bool
-		err := r.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM companies WHERE id = $1)", card.CompanyID).Scan(&exists)
+		err := tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM companies WHERE id = $1)", card.CompanyID).Scan(&exists)
 		if err != nil {
 			return fmt.Errorf("failed to check if company exists: %w", err)
 		}
@@ -242,13 +249,6 @@ func (r *repository) CreateCardsInBatch(ctx context.Context, cards []*models.Car
 			return fmt.Errorf("company with ID %s does not exist", card.CompanyID)
 		}
 	}
-
-	// Start transaction
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
 
 	// Prepare batch insert
 	query := `

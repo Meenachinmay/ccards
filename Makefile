@@ -44,3 +44,8 @@ test-docker: test-setup
 	@echo "Running tests in Docker environment..."
 	@APP_ENVIRONMENT=test go test -v ./...
 	@make test-teardown
+
+
+# Run
+run:
+	go run ./cmd/server/main.go
