@@ -58,6 +58,7 @@ func (r *Router) Setup() *gin.Engine {
 			companyGroup.GET("", r.clientHandler.GetCompany)
 			companyGroup.POST("/upload-csv", r.clientHandler.UploadCardCSV)
 			companyGroup.GET("/to-issue", r.clientHandler.GetCardsToIssue)
+			companyGroup.POST("/issue-cards", r.clientHandler.IssueNewCards)
 		}
 	}
 

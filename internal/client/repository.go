@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 
 	"ccards/pkg/models"
 )
@@ -179,6 +180,125 @@ func (r *repository) UpdateCardToIssueStatus(ctx context.Context, id uuid.UUID, 
 
 	if rowsAffected == 0 {
 		return fmt.Errorf("card to issue not found")
+	}
+
+	return nil
+}
+
+func (r *repository) GetPendingCardsToIssue(ctx context.Context, companyID uuid.UUID) ([]*models.CardToIssue, error) {
+	query := `
+        SELECT id, client_id, card_id, employee_id, employee_email, status, created_at, updated_at
+        FROM cards_to_issue
+        WHERE client_id = $1 AND status = $2
+        ORDER BY created_at ASC
+    `
+
+	var cards []*models.CardToIssue
+	rows, err := r.db.QueryContext(ctx, query, companyID, models.CardToIssueStatusPending)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pending cards: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		card := &models.CardToIssue{}
+		err := rows.Scan(
+			&card.ID,
+			&card.ClientID,
+			&card.CardID,
+			&card.EmployeeID,
+			&card.EmployeeEmail,
+			&card.Status,
+			&card.CreatedAt,
+			&card.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan card to issue: %w", err)
+		}
+		cards = append(cards, card)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating over rows: %w", err)
+	}
+
+	return cards, nil
+}
+
+func (r *repository) CreateCardsInBatch(ctx context.Context, cards []*models.Card) error {
+	if len(cards) == 0 {
+		return nil
+	}
+
+	// Start transaction
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Prepare batch insert
+	query := `
+        INSERT INTO cards (
+            id, company_id, card_number, card_holder_name, employee_id, employee_email,
+            card_type, status, balance, spending_limit, daily_limit, monthly_limit,
+            expiry_date, cvv_hash, last_four, created_at, updated_at
+        ) VALUES `
+
+	values := make([]string, 0, len(cards))
+	args := make([]interface{}, 0, len(cards)*17)
+
+	for i, card := range cards {
+		values = append(values, fmt.Sprintf(
+			"($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)",
+			i*17+1, i*17+2, i*17+3, i*17+4, i*17+5, i*17+6, i*17+7, i*17+8, i*17+9,
+			i*17+10, i*17+11, i*17+12, i*17+13, i*17+14, i*17+15, i*17+16, i*17+17,
+		))
+
+		args = append(args,
+			card.ID,
+			card.CompanyID,
+			card.CardNumber,
+			card.CardHolderName,
+			card.EmployeeID,
+			card.EmployeeEmail,
+			card.CardType,
+			card.Status,
+			card.Balance,
+			card.SpendingLimit,
+			card.DailyLimit,
+			card.MonthlyLimit,
+			card.ExpiryDate,
+			card.CVVHash,
+			card.LastFour,
+			card.CreatedAt,
+			card.UpdatedAt,
+		)
+	}
+
+	query += strings.Join(values, ", ")
+
+	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+		return fmt.Errorf("failed to insert cards: %w", err)
+	}
+
+	return tx.Commit()
+}
+
+func (r *repository) UpdateCardsToIssueStatusBatch(ctx context.Context, ids []uuid.UUID, status string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+
+	query := `
+        UPDATE cards_to_issue
+        SET status = $1, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ANY($2)
+    `
+
+	_, err := r.db.ExecContext(ctx, query, status, pq.Array(ids))
+	if err != nil {
+		return fmt.Errorf("failed to update status: %w", err)
 	}
 
 	return nil

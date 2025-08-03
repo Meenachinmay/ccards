@@ -3,7 +3,10 @@ package client
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"encoding/csv"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"time"
@@ -222,4 +225,104 @@ func (s *service) ProcessCardCSVUpload(ctx context.Context, clientID uuid.UUID, 
 
 func (s *service) GetCardsToIssueByClientID(ctx context.Context, clientID uuid.UUID) ([]*models.CardToIssue, error) {
 	return s.repo.GetCardsToIssueByClientID(ctx, clientID)
+}
+
+func generateCardNumber() string {
+	// Generate a 16-digit card number starting with 4 (Visa-like)
+	cardNumber := "4"
+
+	for i := 0; i < 14; i++ {
+		b := make([]byte, 1)
+		rand.Read(b)
+		digit := int(b[0]) % 10
+		cardNumber += fmt.Sprintf("%d", digit)
+	}
+
+	cardNumber += calculateLuhnCheckDigit(cardNumber)
+	return cardNumber
+}
+
+func calculateLuhnCheckDigit(cardNumber string) string {
+	sum := 0
+	double := false
+
+	for i := len(cardNumber) - 1; i >= 0; i-- {
+		digit := int(cardNumber[i] - '0')
+		if double {
+			digit *= 2
+			if digit > 9 {
+				digit -= 9
+			}
+		}
+		sum += digit
+		double = !double
+	}
+
+	checkDigit := (10 - (sum % 10)) % 10
+	return fmt.Sprintf("%d", checkDigit)
+}
+
+func generateCVVHash() string {
+	b := make([]byte, 2)
+	rand.Read(b)
+	cvv := fmt.Sprintf("%03d", int(b[0])<<8+int(b[1])%1000)
+
+	hash := sha256.Sum256([]byte(cvv))
+	return hex.EncodeToString(hash[:])
+}
+
+func (s *service) IssueNewCards(ctx context.Context, companyID uuid.UUID) (int, error) {
+	pendingCards, err := s.repo.GetPendingCardsToIssue(ctx, companyID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to fetch pending cards: %w", err)
+	}
+
+	if len(pendingCards) == 0 {
+		return 0, errors.ErrNotFound
+	}
+
+	var newCards []*models.Card
+	var cardToIssueIDs []uuid.UUID
+
+	for _, pending := range pendingCards {
+		cardNumber := generateCardNumber()
+		cvvHash := generateCVVHash()
+		lastFour := cardNumber[len(cardNumber)-4:]
+		expiryDate := time.Now().AddDate(3, 0, 0)
+
+		card := &models.Card{
+			ID:             pending.CardID, // -> pre generated cardid
+			CompanyID:      companyID,
+			CardNumber:     cardNumber,
+			CardHolderName: fmt.Sprintf("Employee - %s", pending.EmployeeEmail),
+			EmployeeID:     pending.EmployeeID.String(),
+			EmployeeEmail:  pending.EmployeeEmail,
+			CardType:       models.CardTypeVirtual,
+			Status:         models.CardStatusActive,
+			Balance:        0.00,
+			SpendingLimit:  nil, // Can be set later
+			DailyLimit:     nil,
+			MonthlyLimit:   nil,
+			ExpiryDate:     expiryDate,
+			CVVHash:        cvvHash,
+			LastFour:       lastFour,
+			CreatedAt:      time.Now(),
+			UpdatedAt:      time.Now(),
+		}
+
+		newCards = append(newCards, card)
+		cardToIssueIDs = append(cardToIssueIDs, pending.ID)
+	}
+
+	if err := s.repo.CreateCardsInBatch(ctx, newCards); err != nil {
+		return 0, fmt.Errorf("failed to create cards: %w", err)
+	}
+
+	if err := s.repo.UpdateCardsToIssueStatusBatch(ctx, cardToIssueIDs, models.CardToIssueStatusGenerated); err != nil {
+		// Log error but don't fail the operation since cards are already created
+		// You might want to implement a retry mechanism here
+		fmt.Printf("Warning: Failed to update cards_to_issue status: %v\n", err)
+	}
+
+	return len(newCards), nil
 }

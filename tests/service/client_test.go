@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -20,7 +21,6 @@ import (
 	"ccards/tests/setup"
 )
 
-// MockRepository is a mock implementation of the client.Repository interface
 type MockRepository struct {
 	mock.Mock
 }
@@ -64,7 +64,24 @@ func (m *MockRepository) UpdateCardToIssueStatus(ctx context.Context, id uuid.UU
 	return args.Error(0)
 }
 
-// MockRedis is a mock implementation of the redis.Client
+func (m *MockRepository) GetPendingCardsToIssue(ctx context.Context, companyID uuid.UUID) ([]*models.CardToIssue, error) {
+	args := m.Called(ctx, companyID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*models.CardToIssue), args.Error(1)
+}
+
+func (m *MockRepository) CreateCardsInBatch(ctx context.Context, cards []*models.Card) error {
+	args := m.Called(ctx, cards)
+	return args.Error(0)
+}
+
+func (m *MockRepository) UpdateCardsToIssueStatusBatch(ctx context.Context, ids []uuid.UUID, status string) error {
+	args := m.Called(ctx, ids, status)
+	return args.Error(0)
+}
+
 type MockRedis struct {
 	mock.Mock
 }
@@ -98,7 +115,6 @@ func TestRegisterCompany(t *testing.T) {
 			Phone:   "123-456-7890",
 		}
 
-		// Mock the repository calls
 		mockRepo.On("GetCompanyByEmail", mock.Anything, req.Email).Return(nil, nil).Once()
 		mockRepo.On("CreateCompany", mock.Anything, mock.AnythingOfType("*models.Company")).Return(nil).Once()
 
@@ -130,7 +146,6 @@ func TestRegisterCompany(t *testing.T) {
 			Email: req.Email,
 		}
 
-		// Mock the repository calls
 		mockRepo.On("GetCompanyByEmail", mock.Anything, req.Email).Return(existingCompany, nil).Once()
 
 		resp, err := svc.RegisterCompany(context.Background(), req)
@@ -149,7 +164,6 @@ func TestRegisterCompany(t *testing.T) {
 			Phone:   "789-012-3456",
 		}
 
-		// Mock the repository calls
 		mockRepo.On("GetCompanyByEmail", mock.Anything, req.Email).Return(nil, errors.ErrBadRequest).Once()
 
 		resp, err := svc.RegisterCompany(context.Background(), req)
@@ -189,7 +203,6 @@ func TestLogin(t *testing.T) {
 			Password: password,
 		}
 
-		// Mock the repository calls
 		mockRepo.On("GetCompanyByEmail", mock.Anything, req.Email).Return(company, nil).Once()
 
 		resp, err := svc.Login(context.Background(), req)
@@ -212,7 +225,6 @@ func TestLogin(t *testing.T) {
 			Password: "password123",
 		}
 
-		// Mock the repository calls
 		mockRepo.On("GetCompanyByEmail", mock.Anything, req.Email).Return(nil, errors.ErrNotFound).Once()
 
 		resp, err := svc.Login(context.Background(), req)
@@ -239,7 +251,6 @@ func TestLogin(t *testing.T) {
 			Password: password,
 		}
 
-		// Mock the repository calls
 		mockRepo.On("GetCompanyByEmail", mock.Anything, req.Email).Return(company, nil).Once()
 
 		resp, err := svc.Login(context.Background(), req)
@@ -266,7 +277,6 @@ func TestLogin(t *testing.T) {
 			Password: "wrongpassword",
 		}
 
-		// Mock the repository calls
 		mockRepo.On("GetCompanyByEmail", mock.Anything, req.Email).Return(company, nil).Once()
 
 		resp, err := svc.Login(context.Background(), req)
@@ -297,6 +307,137 @@ func TestRefreshToken(t *testing.T) {
 	})
 }
 
+func TestIssueNewCards(t *testing.T) {
+	helper := setup.NewTestHelper(t)
+	mockRepo := new(MockRepository)
+	jwtConfig := config.JWTConfig{
+		Secret:               "test-secret",
+		AccessTokenDuration:  time.Hour,
+		RefreshTokenDuration: time.Hour * 24,
+	}
+
+	svc := client.NewService(mockRepo, jwtConfig, helper.Redis)
+	ctx := context.Background()
+	companyID := uuid.New()
+
+	t.Run("success", func(t *testing.T) {
+		pendingCards := []*models.CardToIssue{
+			{
+				ID:            uuid.New(),
+				ClientID:      companyID,
+				CardID:        uuid.New(),
+				EmployeeID:    uuid.New(),
+				EmployeeEmail: "employee1@example.com",
+				Status:        models.CardToIssueStatusPending,
+				CreatedAt:     time.Now(),
+				UpdatedAt:     time.Now(),
+			},
+			{
+				ID:            uuid.New(),
+				ClientID:      companyID,
+				CardID:        uuid.New(),
+				EmployeeID:    uuid.New(),
+				EmployeeEmail: "employee2@example.com",
+				Status:        models.CardToIssueStatusPending,
+				CreatedAt:     time.Now(),
+				UpdatedAt:     time.Now(),
+			},
+		}
+
+		mockRepo.On("GetPendingCardsToIssue", ctx, companyID).Return(pendingCards, nil).Once()
+		mockRepo.On("CreateCardsInBatch", ctx, mock.AnythingOfType("[]*models.Card")).Return(nil).Once()
+
+		var cardIDs []uuid.UUID
+		for _, card := range pendingCards {
+			cardIDs = append(cardIDs, card.ID)
+		}
+		mockRepo.On("UpdateCardsToIssueStatusBatch", ctx, cardIDs, models.CardToIssueStatusGenerated).Return(nil).Once()
+
+		issuedCount, err := svc.IssueNewCards(ctx, companyID)
+		require.NoError(t, err)
+		assert.Equal(t, len(pendingCards), issuedCount)
+
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("no_pending_cards", func(t *testing.T) {
+		mockRepo.On("GetPendingCardsToIssue", ctx, companyID).Return([]*models.CardToIssue{}, nil).Once()
+
+		issuedCount, err := svc.IssueNewCards(ctx, companyID)
+		require.Error(t, err)
+		assert.Equal(t, errors.ErrNotFound, err)
+		assert.Equal(t, 0, issuedCount)
+
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("error_fetching_pending_cards", func(t *testing.T) {
+		mockRepo.On("GetPendingCardsToIssue", ctx, companyID).Return(nil, fmt.Errorf("database error")).Once()
+
+		issuedCount, err := svc.IssueNewCards(ctx, companyID)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to fetch pending cards")
+		assert.Equal(t, 0, issuedCount)
+
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("error_creating_cards", func(t *testing.T) {
+		pendingCards := []*models.CardToIssue{
+			{
+				ID:            uuid.New(),
+				ClientID:      companyID,
+				CardID:        uuid.New(),
+				EmployeeID:    uuid.New(),
+				EmployeeEmail: "employee1@example.com",
+				Status:        models.CardToIssueStatusPending,
+				CreatedAt:     time.Now(),
+				UpdatedAt:     time.Now(),
+			},
+		}
+
+		mockRepo.On("GetPendingCardsToIssue", ctx, companyID).Return(pendingCards, nil).Once()
+		mockRepo.On("CreateCardsInBatch", ctx, mock.AnythingOfType("[]*models.Card")).Return(fmt.Errorf("database error")).Once()
+
+		issuedCount, err := svc.IssueNewCards(ctx, companyID)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to create cards")
+		assert.Equal(t, 0, issuedCount)
+
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("error_updating_status", func(t *testing.T) {
+		pendingCards := []*models.CardToIssue{
+			{
+				ID:            uuid.New(),
+				ClientID:      companyID,
+				CardID:        uuid.New(),
+				EmployeeID:    uuid.New(),
+				EmployeeEmail: "employee1@example.com",
+				Status:        models.CardToIssueStatusPending,
+				CreatedAt:     time.Now(),
+				UpdatedAt:     time.Now(),
+			},
+		}
+
+		mockRepo.On("GetPendingCardsToIssue", ctx, companyID).Return(pendingCards, nil).Once()
+		mockRepo.On("CreateCardsInBatch", ctx, mock.AnythingOfType("[]*models.Card")).Return(nil).Once()
+
+		var cardIDs []uuid.UUID
+		for _, card := range pendingCards {
+			cardIDs = append(cardIDs, card.ID)
+		}
+		mockRepo.On("UpdateCardsToIssueStatusBatch", ctx, cardIDs, models.CardToIssueStatusGenerated).Return(fmt.Errorf("database error")).Once()
+
+		issuedCount, err := svc.IssueNewCards(ctx, companyID)
+		require.NoError(t, err)
+		assert.Equal(t, len(pendingCards), issuedCount)
+
+		mockRepo.AssertExpectations(t)
+	})
+}
+
 func TestGetCompanyByID(t *testing.T) {
 	helper := setup.NewTestHelper(t)
 	mockRepo := new(MockRepository)
@@ -317,7 +458,6 @@ func TestGetCompanyByID(t *testing.T) {
 			Status: models.CompanyStatusActive,
 		}
 
-		// Mock the repository calls
 		mockRepo.On("GetCompanyByID", mock.Anything, companyID).Return(company, nil).Once()
 
 		result, err := svc.GetCompanyByID(context.Background(), companyID)
@@ -335,7 +475,6 @@ func TestGetCompanyByID(t *testing.T) {
 	t.Run("not_found", func(t *testing.T) {
 		companyID := uuid.New()
 
-		// Mock the repository calls
 		mockRepo.On("GetCompanyByID", mock.Anything, companyID).Return(nil, nil).Once()
 
 		result, err := svc.GetCompanyByID(context.Background(), companyID)
@@ -348,7 +487,6 @@ func TestGetCompanyByID(t *testing.T) {
 	t.Run("repository_error", func(t *testing.T) {
 		companyID := uuid.New()
 
-		// Mock the repository calls
 		mockRepo.On("GetCompanyByID", mock.Anything, companyID).Return(nil, errors.ErrBadRequest).Once()
 
 		result, err := svc.GetCompanyByID(context.Background(), companyID)
@@ -380,7 +518,6 @@ func TestGetCompanyByEmail(t *testing.T) {
 			Status: models.CompanyStatusActive,
 		}
 
-		// Mock the repository calls
 		mockRepo.On("GetCompanyByEmail", mock.Anything, email).Return(company, nil).Once()
 
 		result, err := svc.GetCompanyByEmail(context.Background(), email)
@@ -398,7 +535,6 @@ func TestGetCompanyByEmail(t *testing.T) {
 	t.Run("not_found", func(t *testing.T) {
 		email := "nonexistent@example.com"
 
-		// Mock the repository calls
 		mockRepo.On("GetCompanyByEmail", mock.Anything, email).Return(nil, nil).Once()
 
 		result, err := svc.GetCompanyByEmail(context.Background(), email)
@@ -411,7 +547,6 @@ func TestGetCompanyByEmail(t *testing.T) {
 	t.Run("repository_error", func(t *testing.T) {
 		email := "error@example.com"
 
-		// Mock the repository calls
 		mockRepo.On("GetCompanyByEmail", mock.Anything, email).Return(nil, errors.ErrBadRequest).Once()
 
 		result, err := svc.GetCompanyByEmail(context.Background(), email)
