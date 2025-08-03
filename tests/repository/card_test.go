@@ -15,6 +15,145 @@ import (
 	"ccards/tests/setup"
 )
 
+func TestGetCardByCompanyIDAndCardID(t *testing.T) {
+	helper := setup.NewTestHelper(t)
+	cardRepo := card.NewRepository(helper.DB)
+	clientRepo := client.NewRepository(helper.DB)
+	ctx := context.Background()
+
+	t.Run("card_exists", func(t *testing.T) {
+		companyID := uuid.New()
+		company := &models.Company{
+			ID:       companyID,
+			ClientID: uuid.New(),
+			Name:     "Test Company",
+			Email:    "test-get-card-company@example.com",
+			Password: "hashed_password",
+			Address:  "123 Test St",
+			Phone:    "123-456-7890",
+			Status:   models.CompanyStatusActive,
+		}
+		err := clientRepo.CreateCompany(ctx, company)
+		require.NoError(t, err)
+
+		cardID := uuid.New()
+		card := &models.Card{
+			ID:             cardID,
+			CompanyID:      companyID,
+			CardNumber:     "4111111111111111",
+			CardHolderName: "Employee 1",
+			EmployeeID:     uuid.New().String(),
+			EmployeeEmail:  "employee1@example.com",
+			CardType:       models.CardTypeVirtual,
+			Status:         models.CardStatusActive,
+			Balance:        100.00,
+			SpendingLimit:  floatPtr(1000.00),
+			DailyLimit:     floatPtr(200.00),
+			MonthlyLimit:   floatPtr(5000.00),
+			ExpiryDate:     time.Now().AddDate(3, 0, 0),
+			CVVHash:        "test-cvv-hash-1",
+			LastFour:       "1111",
+		}
+
+		cards := []*models.Card{card}
+		err = clientRepo.CreateCardsInBatch(ctx, cards)
+		require.NoError(t, err)
+
+		retrievedCard, err := cardRepo.GetCardByCompanyIDAndCardID(ctx, companyID, cardID)
+		require.NoError(t, err)
+		require.NotNil(t, retrievedCard)
+
+		assert.Equal(t, cardID, retrievedCard.ID)
+		assert.Equal(t, companyID, retrievedCard.CompanyID)
+		assert.Equal(t, card.CardNumber, retrievedCard.CardNumber)
+		assert.Equal(t, card.CardHolderName, retrievedCard.CardHolderName)
+		assert.Equal(t, card.EmployeeEmail, retrievedCard.EmployeeEmail)
+		assert.Equal(t, card.CardType, retrievedCard.CardType)
+		assert.Equal(t, card.Status, retrievedCard.Status)
+		assert.Equal(t, card.Balance, retrievedCard.Balance)
+		assert.Equal(t, *card.SpendingLimit, *retrievedCard.SpendingLimit)
+	})
+
+	t.Run("card_not_exists", func(t *testing.T) {
+		companyID := uuid.New()
+		cardID := uuid.New()
+
+		retrievedCard, err := cardRepo.GetCardByCompanyIDAndCardID(ctx, companyID, cardID)
+		require.Error(t, err)
+		assert.Nil(t, retrievedCard)
+	})
+}
+
+func TestUpdateSpendingLimit(t *testing.T) {
+	helper := setup.NewTestHelper(t)
+	cardRepo := card.NewRepository(helper.DB)
+	clientRepo := client.NewRepository(helper.DB)
+	ctx := context.Background()
+
+	t.Run("update_success", func(t *testing.T) {
+		companyID := uuid.New()
+		company := &models.Company{
+			ID:       companyID,
+			ClientID: uuid.New(),
+			Name:     "Test Company",
+			Email:    "test-update-limit-company@example.com",
+			Password: "hashed_password",
+			Address:  "123 Test St",
+			Phone:    "123-456-7890",
+			Status:   models.CompanyStatusActive,
+		}
+		err := clientRepo.CreateCompany(ctx, company)
+		require.NoError(t, err)
+
+		cardID := uuid.New()
+		initialSpendingLimit := 1000.00
+		card := &models.Card{
+			ID:             cardID,
+			CompanyID:      companyID,
+			CardNumber:     "4111111111111111",
+			CardHolderName: "Employee 1",
+			EmployeeID:     uuid.New().String(),
+			EmployeeEmail:  "employee1@example.com",
+			CardType:       models.CardTypeVirtual,
+			Status:         models.CardStatusActive,
+			Balance:        100.00,
+			SpendingLimit:  floatPtr(initialSpendingLimit),
+			DailyLimit:     floatPtr(200.00),
+			MonthlyLimit:   floatPtr(5000.00),
+			ExpiryDate:     time.Now().AddDate(3, 0, 0),
+			CVVHash:        "test-cvv-hash-1",
+			LastFour:       "1111",
+		}
+
+		cards := []*models.Card{card}
+		err = clientRepo.CreateCardsInBatch(ctx, cards)
+		require.NoError(t, err)
+
+		newSpendingLimit := 2000
+		updatedCard, err := cardRepo.UpdateSpendingLimit(ctx, cardID, newSpendingLimit)
+		require.NoError(t, err)
+		require.NotNil(t, updatedCard)
+
+		assert.Equal(t, cardID, updatedCard.ID)
+		assert.Equal(t, companyID, updatedCard.CompanyID)
+		assert.Equal(t, float64(newSpendingLimit), *updatedCard.SpendingLimit)
+
+		retrievedCard, err := cardRepo.GetCardByCompanyIDAndCardID(ctx, companyID, cardID)
+		require.NoError(t, err)
+		require.NotNil(t, retrievedCard)
+		assert.Equal(t, float64(newSpendingLimit), *retrievedCard.SpendingLimit)
+	})
+
+	t.Run("card_not_exists", func(t *testing.T) {
+		cardID := uuid.New()
+		newSpendingLimit := 2000
+
+		updatedCard, err := cardRepo.UpdateSpendingLimit(ctx, cardID, newSpendingLimit)
+		require.Error(t, err)
+		assert.Nil(t, updatedCard)
+	})
+}
+
 func TestGetCardsByCompanyID(t *testing.T) {
 	helper := setup.NewTestHelper(t)
 	cardRepo := card.NewRepository(helper.DB)

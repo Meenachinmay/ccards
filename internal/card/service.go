@@ -21,3 +21,11 @@ func NewService(repo Repository) Service {
 func (s *service) GetCardsByCompanyID(ctx context.Context, companyID uuid.UUID) ([]*models.Card, error) {
 	return s.repo.GetCardsByCompanyID(ctx, companyID)
 }
+
+func (s *service) GetCardByCompanyIDAndCardID(ctx context.Context, companyID uuid.UUID, cardID uuid.UUID) (*models.Card, error) {
+	return s.repo.GetCardByCompanyIDAndCardID(ctx, companyID, cardID)
+}
+
+func (s *service) UpdateSpendingLimit(ctx context.Context, id uuid.UUID, spendingLimit int) (*models.Card, error) {
+	return s.repo.UpdateSpendingLimit(ctx, id, spendingLimit)
+}

@@ -60,10 +60,15 @@ func (r *Router) Setup() *gin.Engine {
 		companyGroup := apiGroup.Group("/company")
 		{
 			companyGroup.GET("", r.clientHandler.GetCompany)
-			companyGroup.GET("/cards", r.cardHandler.GetCards)
 			companyGroup.POST("/upload-csv", r.clientHandler.UploadCardCSV)
-			companyGroup.GET("/to-issue", r.clientHandler.GetCardsToIssue)
+			companyGroup.GET("/card-to-issue", r.clientHandler.GetCardsToIssue)
 			companyGroup.POST("/issue-cards", r.clientHandler.IssueNewCards)
+		}
+
+		cardGroup := apiGroup.Group("/cards")
+		{
+			cardGroup.GET("", r.cardHandler.GetCards)
+			cardGroup.POST("/update/spending-limit", r.cardHandler.UpdateSpendingLimit) // get company id from context and send card id as query params
 		}
 	}
 

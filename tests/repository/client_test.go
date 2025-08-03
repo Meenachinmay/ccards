@@ -122,7 +122,7 @@ func TestGetCompanyByID(t *testing.T) {
 		nonExistingID := uuid.New()
 
 		foundCompany, err := repo.GetCompanyByID(ctx, nonExistingID)
-		require.NoError(t, err) // No error, just nil result
+		require.NoError(t, err)
 		assert.Nil(t, foundCompany)
 	})
 }
@@ -156,7 +156,7 @@ func TestGetCompanyByEmail(t *testing.T) {
 		assert.Equal(t, company.ClientID, foundCompany.ClientID)
 		assert.Equal(t, company.Name, foundCompany.Name)
 		assert.Equal(t, company.Email, foundCompany.Email)
-		assert.Equal(t, company.Password, foundCompany.Password) // Password should be returned
+		assert.Equal(t, company.Password, foundCompany.Password)
 		assert.Equal(t, company.Address, foundCompany.Address)
 		assert.Equal(t, company.Phone, foundCompany.Phone)
 		assert.Equal(t, company.Status, foundCompany.Status)
