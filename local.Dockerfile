@@ -22,7 +22,7 @@ WORKDIR /app
 RUN apk add --no-cache docker-cli
 
 COPY --from=builder /out/server               ./server
-COPY --from=builder /src/internal/config      ./internal/config
+COPY --from=builder /src/config               ./config
 COPY --from=builder /src/db/migrations        ./db/migrations
 
 EXPOSE 8080

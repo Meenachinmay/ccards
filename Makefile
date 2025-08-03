@@ -37,7 +37,7 @@ test-setup:
 # Teardown test environment
 test-teardown:
 	@echo "Tearing down test environment..."
-	@docker compose -f docker-local.compose.yml down
+	@docker compose -f docker-local.compose.yml down postgres_test redis
 
 # Run tests in Docker
 test-docker: test-setup
@@ -45,7 +45,10 @@ test-docker: test-setup
 	@APP_ENVIRONMENT=test go test -v ./...
 	@make test-teardown
 
-
 # Run
 run:
 	go run ./cmd/server/main.go
+
+docker-stop:
+	@echo "Tearing down test environment..."
+	@docker compose -f docker-local.compose.yml down
