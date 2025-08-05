@@ -41,7 +41,7 @@ test-docker: do-test-setup
 	@make test-teardown
 
 # Run
-docker-run:
+run:
 	go run ./cmd/server/main.go
 
 docker-stop:

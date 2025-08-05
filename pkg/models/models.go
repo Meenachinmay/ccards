@@ -26,6 +26,15 @@ const (
 	CardStatusCancelled = "cancelled"
 )
 
+const (
+	TransactionTypePurchase = "purchase"
+	TransactionTypeCharge   = "charge"
+
+	TransactionStatusPending   = "pending"
+	TransactionStatusCompleted = "completed"
+	TransactionStatusFailed    = "failed"
+)
+
 type Company struct {
 	ID        uuid.UUID `json:"id"`
 	ClientID  uuid.UUID `json:"client_id"`
@@ -70,4 +79,29 @@ type Card struct {
 	UpdatedAt      time.Time  `json:"updated_at" db:"updated_at"`
 	BlockedAt      *time.Time `json:"blocked_at" db:"blocked_at"`
 	BlockedReason  *string    `json:"blocked_reason" db:"blocked_reason"`
+}
+
+type Transaction struct {
+	ID               uuid.UUID  `json:"id" db:"id"`
+	CardID           uuid.UUID  `json:"card_id" db:"card_id"`
+	CompanyID        uuid.UUID  `json:"company_id" db:"company_id"`
+	TransactionType  string     `json:"transaction_type" db:"transaction_type"`
+	Amount           float64    `json:"amount" db:"amount"`
+	MerchantName     *string    `json:"merchant_name" db:"merchant_name"`
+	MerchantCategory *string    `json:"merchant_category" db:"merchant_category"`
+	Description      string     `json:"description" db:"description"`
+	Status           string     `json:"status" db:"status"`
+	ProcessedAt      *time.Time `json:"processed_at" db:"processed_at"`
+	CreatedAt        time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at" db:"updated_at"`
+}
+
+type SpendingControl struct {
+	ID           uuid.UUID   `json:"id" db:"id"`
+	CardID       uuid.UUID   `json:"card_id" db:"card_id"`
+	ControlType  string      `json:"control_type" db:"control_type"`
+	ControlValue interface{} `json:"control_value" db:"control_value"`
+	IsActive     bool        `json:"is_active" db:"is_active"`
+	CreatedAt    time.Time   `json:"created_at" db:"created_at"`
+	UpdatedAt    time.Time   `json:"updated_at" db:"updated_at"`
 }

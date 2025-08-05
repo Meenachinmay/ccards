@@ -4,6 +4,7 @@ import (
 	"ccards/internal/card"
 	"ccards/internal/client"
 	"ccards/internal/router"
+	"ccards/internal/transaction"
 	"ccards/pkg/config"
 	"ccards/pkg/database"
 	"context"
@@ -45,7 +46,7 @@ func (b *Bootstrap) Run() error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
-	b.db = db
+	b.db = db // assign the db instance
 
 	if err := b.runMigrations(); err != nil {
 		return fmt.Errorf("failed to run migrations: %w", err)
@@ -74,11 +75,18 @@ func (b *Bootstrap) Run() error {
 	cardService := card.NewService(cardRepo)
 	cardHandler := card.NewHandler(cardService)
 
+	// transaction
+	transactionRepo := transaction.NewRepository(db)
+	transactionService := transaction.NewService(transactionRepo)
+	transactionHandler := transaction.NewHandler(transactionService)
+
 	r := router.NewRouter(router.RouterConfig{
-		ClientHandler: clientHandler,
-		CardHandler:   cardHandler,
-		Config:        b.config,
-		RedisClient:   b.redis,
+		ClientHandler:      clientHandler,
+		CardHandler:        cardHandler,
+		TransactionHandler: transactionHandler,
+		Config:             b.config,
+		RedisClient:        b.redis,
+		DB:                 b.db,
 	})
 
 	b.router = r.Setup()

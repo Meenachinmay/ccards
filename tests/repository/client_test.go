@@ -360,19 +360,28 @@ func TestUpdateCardToIssueStatus(t *testing.T) {
 		err := repo.CreateCardsToIssue(ctx, []*models.CardToIssue{card})
 		require.NoError(t, err)
 
+		// Get the card from the database to get the actual timestamps
+		cardsBeforeUpdate, err := repo.GetCardsToIssueByClientID(ctx, clientID)
+		require.NoError(t, err)
+		require.Len(t, cardsBeforeUpdate, 1)
+		cardBeforeUpdate := cardsBeforeUpdate[0]
+
+		// Add a small delay to ensure the timestamp changes
+		time.Sleep(10 * time.Millisecond)
+
 		err = repo.UpdateCardToIssueStatus(ctx, cardID, models.CardToIssueStatusGenerated)
 		require.NoError(t, err)
 
-		cards, err := repo.GetCardsToIssueByClientID(ctx, clientID)
+		cardsAfterUpdate, err := repo.GetCardsToIssueByClientID(ctx, clientID)
 		require.NoError(t, err)
-		require.Len(t, cards, 1)
+		require.Len(t, cardsAfterUpdate, 1)
 
-		updatedCard := cards[0]
+		updatedCard := cardsAfterUpdate[0]
 		assert.Equal(t, cardID, updatedCard.ID)
 		assert.Equal(t, models.CardToIssueStatusGenerated, updatedCard.Status)
 
-		assert.True(t, updatedCard.UpdatedAt.After(card.UpdatedAt) ||
-			updatedCard.UpdatedAt.Equal(card.UpdatedAt),
+		assert.True(t, updatedCard.UpdatedAt.After(cardBeforeUpdate.UpdatedAt) ||
+			updatedCard.UpdatedAt.Equal(cardBeforeUpdate.UpdatedAt),
 			"UpdatedAt should be equal to or after the original timestamp")
 	})
 
