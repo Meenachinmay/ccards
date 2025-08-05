@@ -84,6 +84,11 @@ func setupTestDatabase(cfg *config.Config) error {
 	}
 	testDB = db
 
+	_, err = db.Exec("SET default_transaction_isolation = 'read committed'")
+	if err != nil {
+		return fmt.Errorf("failed to set transaction isolation: %w", err)
+	}
+
 	gormDB, err := gorm.Open(postgres.New(postgres.Config{
 		Conn: db,
 	}), &gorm.Config{

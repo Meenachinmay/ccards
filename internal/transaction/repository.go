@@ -19,11 +19,15 @@ func NewRepository(db *sql.DB) Repository {
 }
 
 func (r *repository) CreateTransaction(ctx context.Context, tx *sql.Tx, transaction *models.Transaction) error {
+	now := time.Now()
+	transaction.CreatedAt = now
+	transaction.UpdatedAt = now
+
 	query := `
         INSERT INTO transactions (
             id, card_id, company_id, transaction_type, amount,
-            merchant_name, merchant_category, description, status, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, statement_timestamp())
+            merchant_name, merchant_category, description, status, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         RETURNING created_at, updated_at`
 
 	err := tx.QueryRowContext(
@@ -38,6 +42,8 @@ func (r *repository) CreateTransaction(ctx context.Context, tx *sql.Tx, transact
 		transaction.MerchantCategory,
 		transaction.Description,
 		transaction.Status,
+		transaction.CreatedAt,
+		transaction.UpdatedAt,
 	).Scan(&transaction.CreatedAt, &transaction.UpdatedAt)
 
 	if err != nil {

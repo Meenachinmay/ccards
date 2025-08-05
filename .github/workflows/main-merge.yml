@@ -54,7 +54,7 @@ jobs:
           echo "APP_ENVIRONMENT=test" >> $GITHUB_ENV
 
       - name: Run tests
-        run: go test -v ./tests/...
+        run: go test -v -p 1 ./tests/...
         env:
           APP_ENVIRONMENT: test
           DATABASE_HOST: localhost

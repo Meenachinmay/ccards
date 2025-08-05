@@ -96,6 +96,8 @@ func TestCreateTransaction(t *testing.T) {
 		err = tx.Commit()
 		require.NoError(t, err)
 
+		time.Sleep(100 * time.Millisecond)
+
 		// Verify transaction was created
 		retrievedTxn, err := txRepo.GetTransactionByID(ctx, txn.ID)
 		require.NoError(t, err)
@@ -200,6 +202,8 @@ func TestGetTransactionsByCardID(t *testing.T) {
 		tx, err := txRepo.BeginTx(ctx)
 		require.NoError(t, err)
 
+		baseTime := time.Now()
+
 		transactions := []models.Transaction{
 			{
 				ID:              uuid.New(),
@@ -209,6 +213,8 @@ func TestGetTransactionsByCardID(t *testing.T) {
 				Amount:          100.00,
 				Description:     "Transaction 1",
 				Status:          models.TransactionStatusCompleted,
+				CreatedAt:       baseTime,
+				UpdatedAt:       baseTime,
 			},
 			{
 				ID:              uuid.New(),
@@ -218,6 +224,8 @@ func TestGetTransactionsByCardID(t *testing.T) {
 				Amount:          200.00,
 				Description:     "Transaction 2",
 				Status:          models.TransactionStatusCompleted,
+				CreatedAt:       baseTime.Add(1 * time.Second),
+				UpdatedAt:       baseTime.Add(1 * time.Second),
 			},
 			{
 				ID:              uuid.New(),
@@ -227,6 +235,8 @@ func TestGetTransactionsByCardID(t *testing.T) {
 				Amount:          50.00,
 				Description:     "Transaction 3",
 				Status:          models.TransactionStatusCompleted,
+				CreatedAt:       baseTime.Add(2 * time.Second),
+				UpdatedAt:       baseTime.Add(2 * time.Second),
 			},
 		}
 
@@ -238,6 +248,8 @@ func TestGetTransactionsByCardID(t *testing.T) {
 
 		err = tx.Commit()
 		require.NoError(t, err)
+
+		time.Sleep(100 * time.Millisecond)
 
 		// Test pagination
 		retrievedTxns, err := txRepo.GetTransactionsByCardID(ctx, card.ID, 2, 0)
