@@ -23,7 +23,7 @@ func (r *repository) CreateTransaction(ctx context.Context, tx *sql.Tx, transact
         INSERT INTO transactions (
             id, card_id, company_id, transaction_type, amount,
             merchant_name, merchant_category, description, status, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, clock_timestamp())
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, statement_timestamp())
         RETURNING created_at, updated_at`
 
 	err := tx.QueryRowContext(

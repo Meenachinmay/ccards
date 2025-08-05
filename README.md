@@ -24,6 +24,10 @@ CCards is a Go-based backend service for managing corporate credit cards. It all
 - Employee data upload via CSV
 - Credit card issuance for employees
 - Card management (view cards, update spending limits)
+- Transaction processing with various validation checks
+- Spending limit enforcement
+- Daily transaction limit controls
+- Card usability verification
 - JWT-based authentication
 
 ## Technologies Used
@@ -138,9 +142,11 @@ The project includes various test commands in the Makefile:
 
 The project includes HTTP tests that can be run using REST client tools like [REST Client for VS Code](https://marketplace.visualstudio.com/items?itemName=humao.rest-client) or [Postman](https://www.postman.com/).
 
-The HTTP tests are located in `tests/http_tests/api_tests.http`. They demonstrate the API endpoints and how to use them.
+The HTTP tests are located in:
+- `tests/http_tests/api_tests.http`: Basic API functionality tests
+- `tests/http_tests/transaction_tests.http`: Transaction-related API tests
 
-To run the HTTP tests:
+To run the basic API tests:
 
 1. Start the application
 2. Open `tests/http_tests/api_tests.http` in a REST client
@@ -155,6 +161,18 @@ To run the HTTP tests:
    - Verify Cards Status After Issuing
    - Get all cards for a company
    - Update Card Spending Limit
+
+To run the transaction tests:
+
+1. Start the application
+2. Complete the basic API tests first to set up cards
+3. Open `tests/http_tests/transaction_tests.http` in a REST client
+4. Run the requests in sequence:
+   - Make a Payment
+   - Get Transaction History
+   - Get Transaction History for Company
+   - Get Specific Transaction
+   - Test Invalid Transaction Scenarios
 
 ## API Documentation
 
@@ -197,6 +215,21 @@ To run the HTTP tests:
   }
   ```
 
+### Transaction Endpoints
+
+- **POST /api/cards/transactions**: Make a payment/transaction with a card
+  ```json
+  {
+    "company_id": "uuid-here",
+    "card_id": "uuid-here",
+    "amount": 100.50,
+    "merchant_category": "retail"
+  }
+  ```
+- **GET /api/cards/transactions?card_id={cardId}&page=1&page_size=10**: Get transaction history for a specific card
+- **GET /api/cards/transactions?page=1&page_size=10**: Get transaction history for all company cards
+- **GET /api/cards/transactions/{transactionId}**: Get details of a specific transaction
+
 ### Health Check
 
 - **GET /health**: Check if the application is running
@@ -224,10 +257,16 @@ ccards/
 │   ├── database/           # Database connection
 │   ├── errors/             # Error handling
 │   ├── middleware/         # HTTP middleware
+│   │   ├── spending_limit.go      # Spending limit validation
+│   │   ├── sufficient_amount.go   # Sufficient balance validation
+│   │   ├── usable_card.go         # Card usability validation
+│   │   ├── valid_card.go          # Card validity validation
+│   │   └── within_daily_limit.go  # Daily transaction limit validation
 │   ├── models/             # Shared data models
 │   └── utils/              # Utility functions
 └── tests/                  # Tests
     ├── http_tests/         # HTTP test files
+    ├── middleware/         # Middleware tests
     ├── repository/         # Repository tests
     └── service/            # Service tests
 ```
