@@ -80,3 +80,18 @@ func (h *Handler) UpdateSpendingLimit(c *gin.Context) {
 		"card": updatedCard,
 	})
 }
+
+// Block companyID, cardID
+func (h *Handler) Block(c *gin.Context) {
+
+}
+
+// Unblock companyID, cardID
+func (h *Handler) Unblock(c *gin.Context) {
+
+}
+
+// Charge companyID, cardID
+func (h *Handler) Charge(c *gin.Context) {
+
+}

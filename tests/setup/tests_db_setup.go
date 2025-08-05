@@ -84,6 +84,11 @@ func setupTestDatabase(cfg *config.Config) error {
 	}
 	testDB = db
 
+	_, err = db.Exec("SET default_transaction_isolation = 'read committed'")
+	if err != nil {
+		return fmt.Errorf("failed to set transaction isolation: %w", err)
+	}
+
 	gormDB, err := gorm.Open(postgres.New(postgres.Config{
 		Conn: db,
 	}), &gorm.Config{
@@ -228,20 +233,11 @@ func (h *TestHelper) CleanDatabase() error {
 		tables = append(tables, tableName)
 	}
 
-	tx, err := h.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer tx.Rollback()
-
+	// Truncate each table individually with retries
 	for _, table := range tables {
-		if _, err := tx.ExecContext(ctx, fmt.Sprintf("TRUNCATE TABLE %s RESTART IDENTITY CASCADE", table)); err != nil {
-			return fmt.Errorf("failed to truncate table %s: %w", table, err)
+		if err := h.truncateTableWithRetry(ctx, table); err != nil {
+			return err
 		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	return nil
@@ -261,4 +257,44 @@ func (h *TestHelper) MustExec(t *testing.T, query string, args ...interface{}) {
 	if err != nil {
 		t.Fatalf("Failed to execute query: %v", err)
 	}
+}
+
+func (h *TestHelper) truncateTableWithRetry(ctx context.Context, table string) error {
+	maxRetries := 5
+	var err error
+
+	for i := 0; i < maxRetries; i++ {
+		// Use a new transaction for each attempt
+		tx, err := h.DB.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("failed to begin transaction: %w", err)
+		}
+
+		query := "TRUNCATE TABLE " + table + " RESTART IDENTITY CASCADE"
+		_, err = tx.ExecContext(ctx, query)
+		if err == nil {
+			// Successful truncate, commit and return
+			if err := tx.Commit(); err != nil {
+				return fmt.Errorf("failed to commit transaction: %w", err)
+			}
+			return nil
+		}
+
+		// Rollback the failed transaction
+		tx.Rollback()
+
+		// Check if it's a deadlock error
+		if err.Error() == "pq: deadlock detected" {
+			// Exponential backoff: sleep for 2^i * 10ms
+			backoffTime := time.Duration(1<<uint(i)) * 10 * time.Millisecond
+			time.Sleep(backoffTime)
+			continue
+		}
+
+		// If it's not a deadlock error, return immediately
+		return fmt.Errorf("failed to truncate table %s: %w", table, err)
+	}
+
+	// If we've exhausted all retries
+	return fmt.Errorf("failed to truncate table %s after %d retries: %w", table, maxRetries, err)
 }

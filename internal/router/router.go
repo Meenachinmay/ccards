@@ -3,34 +3,42 @@ package router
 import (
 	"ccards/internal/card"
 	"ccards/internal/client"
+	"ccards/internal/transaction"
 	"ccards/pkg/config"
 	"ccards/pkg/middleware"
+	"database/sql"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 )
 
 type Router struct {
-	engine        *gin.Engine
-	clientHandler *client.Handler
-	cardHandler   *card.Handler
-	config        *config.Config
-	redisClient   *redis.Client
+	engine             *gin.Engine
+	clientHandler      *client.Handler
+	cardHandler        *card.Handler
+	transactionHandler *transaction.Handler
+	config             *config.Config
+	redisClient        *redis.Client
+	db                 *sql.DB
 }
 
 type RouterConfig struct {
-	ClientHandler *client.Handler
-	CardHandler   *card.Handler
-	Config        *config.Config
-	RedisClient   *redis.Client
+	ClientHandler      *client.Handler
+	CardHandler        *card.Handler
+	TransactionHandler *transaction.Handler
+	Config             *config.Config
+	RedisClient        *redis.Client
+	DB                 *sql.DB
 }
 
 func NewRouter(cfg RouterConfig) *Router {
 	return &Router{
-		engine:        gin.New(),
-		clientHandler: cfg.ClientHandler,
-		cardHandler:   cfg.CardHandler,
-		config:        cfg.Config,
-		redisClient:   cfg.RedisClient,
+		engine:             gin.New(),
+		clientHandler:      cfg.ClientHandler,
+		cardHandler:        cfg.CardHandler,
+		transactionHandler: cfg.TransactionHandler,
+		config:             cfg.Config,
+		redisClient:        cfg.RedisClient,
+		db:                 cfg.DB,
 	}
 }
 
@@ -69,6 +77,25 @@ func (r *Router) Setup() *gin.Engine {
 		{
 			cardGroup.GET("", r.cardHandler.GetCards)
 			cardGroup.POST("/update/spending-limit", r.cardHandler.UpdateSpendingLimit) // get company id from context and send card id as query params
+			cardGroup.POST("/update/block", r.cardHandler.Block)                        // companyID, cardID
+			cardGroup.POST("/update/unblock", r.cardHandler.Unblock)                    // companyID, cardID
+			cardGroup.POST("/update/charge", r.cardHandler.Charge)                      // companyID, cardID, amount
+
+			transactionGroup := cardGroup.Group("/transactions")
+			{
+				transactionGroup.Use(
+					middleware.ValidCard(r.db),
+					middleware.UsableCard(),
+					middleware.SufficientAmount(),
+					middleware.WithinDailyLimit(r.db),
+					middleware.SpendingLimit(r.db),
+				)
+
+				transactionGroup.POST("", r.transactionHandler.Pay)
+			}
+
+			cardGroup.GET("/transactions", r.transactionHandler.GetTransactionHistory)
+			cardGroup.GET("/transactions/:id", r.transactionHandler.GetTransaction)
 		}
 	}
 

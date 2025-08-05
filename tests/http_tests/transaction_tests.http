@@ -1,0 +1,133 @@
+### Transaction Tests
+
+### Make a Payment
+@cardId = eda265de-12bf-4d88-8c1c-a33d9702eebd
+@companyId = d011de4c-93f6-4d7e-a1c4-b36b81e60516
+POST http://localhost:8080/api/cards/transactions
+Content-Type: application/json
+Accept: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "company_id": "{{companyId}}",
+  "card_id": "{{cardId}}",
+  "amount": 100.50,
+  "merchant_category": "retail"
+}
+
+> {%
+    console.log("Payment response body:", response.body);
+
+    if (response.body.transaction && response.body.transaction.id) {
+        console.log("Transaction created successfully with ID:", response.body.transaction.id);
+        client.global.set("transactionId", response.body.transaction.id);
+        console.log("'transactionId' has been set globally for the session:", response.body.transaction.id);
+        console.log("Remaining balance:", response.body.remaining_balance);
+        console.log("Card last four:", response.body.card_last_four);
+    } else if (response.body.error) {
+        console.error(`Error: ${response.body.error}`);
+        if (response.body.details) {
+            console.error(`Details: ${response.body.details}`);
+        }
+    }
+%}
+
+### Get Transaction History
+GET http://localhost:8080/api/cards/transactions?card_id={{cardId}}&page=1&page_size=10
+Content-Type: application/json
+Accept: application/json
+Authorization: Bearer {{accessToken}}
+
+> {%
+    console.log("Transaction history response body:", response.body);
+
+    if (response.body.transactions && response.body.transactions.length > 0) {
+        console.log(`Retrieved ${response.body.transactions.length} transactions out of ${response.body.total}`);
+        console.log("First transaction:", response.body.transactions[0]);
+    } else if (response.body.error) {
+        console.error(`Error: ${response.body.error}`);
+    } else {
+        console.log("No transactions found");
+    }
+%}
+
+### Get Transaction History for Company (without card_id)
+GET http://localhost:8080/api/cards/transactions?page=1&page_size=10
+Content-Type: application/json
+Accept: application/json
+Authorization: Bearer {{accessToken}}
+
+> {%
+    console.log("Company transaction history response body:", response.body);
+
+    if (response.body.transactions && response.body.transactions.length > 0) {
+        console.log(`Retrieved ${response.body.transactions.length} company transactions out of ${response.body.total}`);
+        console.log("First transaction:", response.body.transactions[0]);
+    } else if (response.body.error) {
+        console.error(`Error: ${response.body.error}`);
+    } else {
+        console.log("No company transactions found");
+    }
+%}
+
+### Get Specific Transaction
+GET http://localhost:8080/api/cards/transactions/{{transactionId}}
+Content-Type: application/json
+Accept: application/json
+Authorization: Bearer {{accessToken}}
+
+> {%
+    console.log("Get transaction response body:", response.body);
+
+    if (response.body && !response.body.error) {
+        console.log("Transaction details retrieved successfully:");
+        console.log("ID:", response.body.id);
+        console.log("Card ID:", response.body.card_id);
+        console.log("Amount:", response.body.amount);
+        console.log("Status:", response.body.status);
+        console.log("Transaction Type:", response.body.transaction_type);
+        console.log("Created At:", response.body.created_at);
+    } else if (response.body.error) {
+        console.error(`Error: ${response.body.error}`);
+    }
+%}
+
+### Get Invalid Transaction (should return error)
+GET http://localhost:8080/api/cards/transactions/00000000-0000-0000-0000-000000000000
+Content-Type: application/json
+Accept: application/json
+Authorization: Bearer {{accessToken}}
+
+> {%
+    console.log("Invalid transaction response body:", response.body);
+
+    if (response.body.error) {
+        console.log("Expected error received:", response.body.error);
+    } else {
+        console.error("Error: Expected an error response but got a successful response");
+    }
+%}
+
+### Make Invalid Payment (missing required fields)
+POST http://localhost:8080/api/cards/transactions
+Content-Type: application/json
+Accept: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "company_id": "{{companyId}}",
+  "amount": 100.50
+}
+
+> {%
+    console.log("Invalid payment response body:", response.body);
+
+    if (response.body.error) {
+        console.log("Expected error received:", response.body.error);
+        if (response.body.details) {
+            console.log("Error details:", response.body.details);
+        }
+    } else {
+        console.error("Error: Expected an error response but got a successful response");
+    }
+%}
