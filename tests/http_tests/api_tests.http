@@ -153,3 +153,25 @@ Authorization: Bearer {{accessToken}}
         console.error(`Error: ${response.body.error}`);
     }
 %}
+
+### Update Card Spending Control
+POST http://localhost:8080/api/cards/update/spending-control?cardId={{cardId}}
+Content-Type: application/json
+Accept: application/json
+Authorization: Bearer {{accessToken}}
+
+{
+  "control_type": "merchant_category",
+  "allowed_categories": ["food"],
+  "blocked_categories": []
+}
+
+> {%
+    console.log("Update Spending Control response body:", response.body);
+
+    if (response.body.message) {
+        console.log("Spending control updated successfully for type:", response.body.control_type);
+    } else if (response.body.error) {
+        console.error(`Error: ${response.body.error}`);
+    }
+%}
