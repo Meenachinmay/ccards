@@ -29,3 +29,7 @@ func (s *service) GetCardByCompanyIDAndCardID(ctx context.Context, companyID uui
 func (s *service) UpdateSpendingLimit(ctx context.Context, id uuid.UUID, spendingLimit int) (*models.Card, error) {
 	return s.repo.UpdateSpendingLimit(ctx, id, spendingLimit)
 }
+
+func (s *service) UpdateSpendingControl(ctx context.Context, cardID uuid.UUID, controlType string, controlValue interface{}) error {
+	return s.repo.UpdateSpendingControl(ctx, cardID, controlType, controlValue)
+}

@@ -80,6 +80,7 @@ func (r *Router) Setup() *gin.Engine {
 			cardGroup.POST("/update/block", r.cardHandler.Block)                        // companyID, cardID
 			cardGroup.POST("/update/unblock", r.cardHandler.Unblock)                    // companyID, cardID
 			cardGroup.POST("/update/charge", r.cardHandler.Charge)                      // companyID, cardID, amount
+			cardGroup.POST("/update/spending-control", r.cardHandler.UpdateSpendingControl)
 
 			transactionGroup := cardGroup.Group("/transactions")
 			{

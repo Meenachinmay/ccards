@@ -41,6 +41,11 @@ func (m *MockCardRepository) UpdateSpendingLimit(ctx context.Context, id uuid.UU
 	return args.Get(0).(*models.Card), args.Error(1)
 }
 
+func (m *MockCardRepository) UpdateSpendingControl(ctx context.Context, cardID uuid.UUID, controlType string, controlValue interface{}) error {
+	args := m.Called(ctx, cardID, controlType, controlValue)
+	return args.Error(0)
+}
+
 func TestGetCardByCompanyIDAndCardID(t *testing.T) {
 	mockRepo := new(MockCardRepository)
 	svc := card.NewService(mockRepo)
@@ -194,6 +199,44 @@ func TestGetCardsByCompanyID(t *testing.T) {
 		require.Error(t, err)
 		assert.Equal(t, expectedErr, err)
 		assert.Nil(t, cards)
+		mockRepo.AssertExpectations(t)
+	})
+}
+
+func TestUpdateSpendingControl(t *testing.T) {
+	mockRepo := new(MockCardRepository)
+	svc := card.NewService(mockRepo)
+	ctx := context.Background()
+
+	t.Run("success", func(t *testing.T) {
+		cardID := uuid.New()
+		controlType := "merchant_category"
+		controlValue := map[string]interface{}{
+			"allowed_categories": []string{"food"},
+			"blocked_categories": []string{},
+		}
+
+		mockRepo.On("UpdateSpendingControl", ctx, cardID, controlType, controlValue).Return(nil).Once()
+
+		err := svc.UpdateSpendingControl(ctx, cardID, controlType, controlValue)
+		require.NoError(t, err)
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("repository_error", func(t *testing.T) {
+		cardID := uuid.New()
+		controlType := "merchant_category"
+		controlValue := map[string]interface{}{
+			"allowed_categories": []string{"food"},
+			"blocked_categories": []string{},
+		}
+		expectedErr := assert.AnError
+
+		mockRepo.On("UpdateSpendingControl", ctx, cardID, controlType, controlValue).Return(expectedErr).Once()
+
+		err := svc.UpdateSpendingControl(ctx, cardID, controlType, controlValue)
+		require.Error(t, err)
+		assert.Equal(t, expectedErr, err)
 		mockRepo.AssertExpectations(t)
 	})
 }

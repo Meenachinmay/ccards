@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -258,6 +259,193 @@ func TestGetCardsByCompanyID(t *testing.T) {
 		retrievedCards, err := cardRepo.GetCardsByCompanyID(ctx, companyID)
 		require.NoError(t, err)
 		assert.Empty(t, retrievedCards, "Should return empty slice for company with no cards")
+	})
+}
+
+func TestUpdateSpendingControl(t *testing.T) {
+	helper := setup.NewTestHelper(t)
+	cardRepo := card.NewRepository(helper.DB)
+	clientRepo := client.NewRepository(helper.DB)
+	ctx := context.Background()
+
+	t.Run("create_new_control_success", func(t *testing.T) {
+		companyID := uuid.New()
+		company := &models.Company{
+			ID:       companyID,
+			ClientID: uuid.New(),
+			Name:     "Test Company",
+			Email:    "test-spending-control-company@example.com",
+			Password: "hashed_password",
+			Address:  "123 Test St",
+			Phone:    "123-456-7890",
+			Status:   models.CompanyStatusActive,
+		}
+		err := clientRepo.CreateCompany(ctx, company)
+		require.NoError(t, err)
+
+		cardID := uuid.New()
+		card := &models.Card{
+			ID:             cardID,
+			CompanyID:      companyID,
+			CardNumber:     "4111111111111111",
+			CardHolderName: "Employee 1",
+			EmployeeID:     uuid.New().String(),
+			EmployeeEmail:  "employee1@example.com",
+			CardType:       models.CardTypeVirtual,
+			Status:         models.CardStatusActive,
+			Balance:        100.00,
+			SpendingLimit:  floatPtr(1000.00),
+			DailyLimit:     floatPtr(200.00),
+			MonthlyLimit:   floatPtr(5000.00),
+			ExpiryDate:     time.Now().AddDate(3, 0, 0),
+			CVVHash:        "test-cvv-hash-1",
+			LastFour:       "1111",
+		}
+
+		cards := []*models.Card{card}
+		err = clientRepo.CreateCardsInBatch(ctx, cards)
+		require.NoError(t, err)
+
+		controlType := "merchant_category"
+		controlValue := map[string]interface{}{
+			"allowed_categories": []string{"food"},
+			"blocked_categories": []string{},
+		}
+
+		err = cardRepo.UpdateSpendingControl(ctx, cardID, controlType, controlValue)
+		require.NoError(t, err)
+
+		// Verify the control was created by querying the database directly
+		query := `
+			SELECT control_type, control_value, is_active
+			FROM spending_controls
+			WHERE card_id = $1 AND control_type = $2
+		`
+		var retrievedType string
+		var controlValueJSON []byte
+		var isActive bool
+
+		err = helper.DB.QueryRowContext(ctx, query, cardID, controlType).Scan(&retrievedType, &controlValueJSON, &isActive)
+		require.NoError(t, err)
+
+		assert.Equal(t, controlType, retrievedType)
+		assert.True(t, isActive)
+
+		// Verify the control value
+		var retrievedValue map[string]interface{}
+		err = json.Unmarshal(controlValueJSON, &retrievedValue)
+		require.NoError(t, err)
+
+		allowedCategories, ok := retrievedValue["allowed_categories"].([]interface{})
+		require.True(t, ok)
+		require.Len(t, allowedCategories, 1)
+		assert.Equal(t, "food", allowedCategories[0])
+
+		blockedCategories, ok := retrievedValue["blocked_categories"].([]interface{})
+		require.True(t, ok)
+		require.Len(t, blockedCategories, 0)
+	})
+
+	t.Run("update_existing_control_success", func(t *testing.T) {
+		companyID := uuid.New()
+		company := &models.Company{
+			ID:       companyID,
+			ClientID: uuid.New(),
+			Name:     "Test Company",
+			Email:    "test-update-control-company@example.com",
+			Password: "hashed_password",
+			Address:  "123 Test St",
+			Phone:    "123-456-7890",
+			Status:   models.CompanyStatusActive,
+		}
+		err := clientRepo.CreateCompany(ctx, company)
+		require.NoError(t, err)
+
+		cardID := uuid.New()
+		card := &models.Card{
+			ID:             cardID,
+			CompanyID:      companyID,
+			CardNumber:     "4333333333333333",
+			CardHolderName: "Employee 1",
+			EmployeeID:     uuid.New().String(),
+			EmployeeEmail:  "employee1@example.com",
+			CardType:       models.CardTypeVirtual,
+			Status:         models.CardStatusActive,
+			Balance:        100.00,
+			SpendingLimit:  floatPtr(1000.00),
+			DailyLimit:     floatPtr(200.00),
+			MonthlyLimit:   floatPtr(5000.00),
+			ExpiryDate:     time.Now().AddDate(3, 0, 0),
+			CVVHash:        "test-cvv-hash-1",
+			LastFour:       "3333",
+		}
+
+		cards := []*models.Card{card}
+		err = clientRepo.CreateCardsInBatch(ctx, cards)
+		require.NoError(t, err)
+
+		// First, create an initial control
+		controlType := "merchant_category"
+		initialControlValue := map[string]interface{}{
+			"allowed_categories": []string{"food"},
+			"blocked_categories": []string{},
+		}
+
+		err = cardRepo.UpdateSpendingControl(ctx, cardID, controlType, initialControlValue)
+		require.NoError(t, err)
+
+		// Now update the control
+		updatedControlValue := map[string]interface{}{
+			"allowed_categories": []string{"food", "grocery"},
+			"blocked_categories": []string{"entertainment"},
+		}
+
+		err = cardRepo.UpdateSpendingControl(ctx, cardID, controlType, updatedControlValue)
+		require.NoError(t, err)
+
+		// Verify the control was updated
+		query := `
+			SELECT control_type, control_value, is_active
+			FROM spending_controls
+			WHERE card_id = $1 AND control_type = $2
+		`
+		var retrievedType string
+		var controlValueJSON []byte
+		var isActive bool
+
+		err = helper.DB.QueryRowContext(ctx, query, cardID, controlType).Scan(&retrievedType, &controlValueJSON, &isActive)
+		require.NoError(t, err)
+
+		assert.Equal(t, controlType, retrievedType)
+		assert.True(t, isActive)
+
+		// Verify the updated control value
+		var retrievedValue map[string]interface{}
+		err = json.Unmarshal(controlValueJSON, &retrievedValue)
+		require.NoError(t, err)
+
+		allowedCategories, ok := retrievedValue["allowed_categories"].([]interface{})
+		require.True(t, ok)
+		require.Len(t, allowedCategories, 2)
+		assert.Contains(t, allowedCategories, "food")
+		assert.Contains(t, allowedCategories, "grocery")
+
+		blockedCategories, ok := retrievedValue["blocked_categories"].([]interface{})
+		require.True(t, ok)
+		require.Len(t, blockedCategories, 1)
+		assert.Equal(t, "entertainment", blockedCategories[0])
+	})
+
+	t.Run("card_not_exists", func(t *testing.T) {
+		cardID := uuid.New()
+		controlType := "merchant_category"
+		controlValue := map[string]interface{}{
+			"allowed_categories": []string{"food"},
+			"blocked_categories": []string{},
+		}
+
+		err := cardRepo.UpdateSpendingControl(ctx, cardID, controlType, controlValue)
+		require.Error(t, err)
 	})
 }
 

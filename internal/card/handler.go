@@ -95,3 +95,64 @@ func (h *Handler) Unblock(c *gin.Context) {
 func (h *Handler) Charge(c *gin.Context) {
 
 }
+
+// UpdateSpendingControl updates the spending control for a card
+func (h *Handler) UpdateSpendingControl(c *gin.Context) {
+	var req request.CardUpdateSpendingControl
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get the company ID from context
+	companyID, err := middleware.GetCompanyIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	// Get the card ID from query params
+	cardID := c.Query("cardId")
+	cardUUID, err := uuid.Parse(cardID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid card ID format"})
+		return
+	}
+
+	// Verify the card belongs to the company
+	card, err := h.service.GetCardByCompanyIDAndCardID(c, companyID, cardUUID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve card"})
+		return
+	}
+	if card == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Card not found"})
+		return
+	}
+
+	// Create control value based on control type
+	var controlValue interface{}
+	switch req.ControlType {
+	case "merchant_category":
+		controlValue = middleware.MerchantCategoryControl{
+			AllowedCategories: req.AllowedCategories,
+			BlockedCategories: req.BlockedCategories,
+		}
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Unsupported control type"})
+		return
+	}
+
+	// Update the spending control
+	err = h.service.UpdateSpendingControl(c, card.ID, req.ControlType, controlValue)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update spending control"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Spending control updated successfully",
+		"control_type": req.ControlType,
+	})
+}
