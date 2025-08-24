@@ -14,10 +14,10 @@
 [] implement generate cards for company - DONE
 [] implement company login - DONE
 [] implement get all cards - DONE
-[] implement charge a card
-[] implement block a card
-[] implement unblock a card
+[] implement charge a card - DONE
+[] implement block a card - DONE
+[] implement unblock a card - DONE
 [] implement get status of card - DONE
-[] implement make transaction for a card
-[] implement get all transaction for a card
-[] implement get all transaction for a company
+[] implement make transaction for a card - DONE
+[] implement get all transaction for a card - DONE
+[] implement get all transaction for a company - DONE
