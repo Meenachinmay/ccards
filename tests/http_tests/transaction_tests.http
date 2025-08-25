@@ -12,7 +12,7 @@ Authorization: Bearer {{accessToken}}
   "company_id": "{{companyId}}",
   "card_id": "{{cardId}}",
   "amount": 100.50,
-  "merchant_category": "internet"
+  "merchant_category": "food"
 }
 
 > {%
